@@ -12,18 +12,14 @@ longer break silently.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
 
 from cancerbero.audit import CheckOptions, run_check
 from cancerbero.domain import Status
-
-# Add tests directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent))
-from gguf_builder import build
-from real_templates import TEMPLATES
+from tests.gguf_builder import build
+from tests.real_templates import TEMPLATES
 
 
 def _findings_for(tmp_path: Path, name: str, template: str):
