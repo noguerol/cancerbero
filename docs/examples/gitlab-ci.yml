@@ -1,0 +1,119 @@
+# GitLab CI configuration for Cancerbero model security checks
+# See docs/guides/cicd.md for documentation
+
+stages:
+  - security
+  - report
+
+variables:
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+
+# Cache pip packages
+cache:
+  paths:
+    - .pip-cache/
+
+# Basic model check
+model-security:
+  stage: security
+  image: python:3.12-slim
+  before_script:
+    - pip install cancerbero
+  script:
+    - cancerbero check ./models/ --no-interactive --json report.json
+  artifacts:
+    paths:
+      - report.json
+    when: always
+    expire_in: 30 days
+  rules:
+    - changes:
+        - models/**
+        - "*.gguf"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# SARIF report for security dashboard
+model-security-sarif:
+  stage: security
+  image: python:3.12-slim
+  before_script:
+    - pip install cancerbero
+  script:
+    - cancerbero check ./models/ --no-interactive --format sarif > results.sarif
+  artifacts:
+    reports:
+      sast: results.sarif
+    expire_in: 30 days
+  rules:
+    - changes:
+        - models/**
+        - "*.gguf"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# Matrix testing for multiple models
+model-check-matrix:
+  stage: security
+  image: python:3.12-slim
+  parallel:
+    matrix:
+      - MODEL:
+          - models/llama-3.1-8b.gguf
+          - models/qwen3.6-27b.gguf
+          - models/gemma-4-31b.gguf
+  before_script:
+    - pip install cancerbero
+  script:
+    - cancerbero check $MODEL --no-interactive --json report-$MODEL.json
+  artifacts:
+    paths:
+      - report-*.json
+    when: always
+    expire_in: 30 days
+  rules:
+    - changes:
+        - models/**
+        - "*.gguf"
+    - if: $CI_PIPELINE_SOURCE == "web"
+
+# Summary report
+security-summary:
+  stage: report
+  image: python:3.12-slim
+  needs:
+    - model-security
+    - model-check-matrix
+  script:
+    - |
+      echo "## Model Security Summary" >> gl-code-quality-report.json
+      echo "" >> gl-code-quality-report.json
+      
+      if [ -f report.json ]; then
+        verdict=$(python3 -c "import json; print(json.load(open('report.json'))['verdict'])")
+        echo "Overall Verdict: $verdict" >> gl-code-quality-report.json
+      fi
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
+    expire_in: 30 days
+  rules:
+    - changes:
+        - models/**
+        - "*.gguf"
+    - if: $CI_PIPELINE_SOURCE == "web"
+  when: always
+
+# Manual trigger for on-demand checks
+manual-check:
+  stage: security
+  image: python:3.12-slim
+  before_script:
+    - pip install cancerbero
+  script:
+    - cancerbero check ./models/ --no-interactive --verbose --json manual-report.json
+  artifacts:
+    paths:
+      - manual-report.json
+    expire_in: 90 days
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "web"
+  when: manual

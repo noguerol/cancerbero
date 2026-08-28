@@ -1,0 +1,78 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cancerbero"
+version = "0.1.0"
+description = "Local pre-load inspection for GGUF artifacts and llama.cpp runtimes"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Apache-2.0"}
+authors = [{name = "Cancerbero contributors"}]
+keywords = ["gguf", "llama.cpp", "model-security", "supply-chain", "security"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Security",
+]
+dependencies = ["Jinja2>=3.1.4,<4"]
+
+[project.optional-dependencies]
+dev = [
+  "build>=1.2",
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "ruff>=0.6",
+]
+yaml = ["PyYAML>=6.0"]
+
+[project.scripts]
+cancerbero = "cancerbero.cli:main"
+
+[project.urls]
+Documentation = "https://github.com/cancerbero/cancerbero#readme"
+Issues = "https://github.com/cancerbero/cancerbero/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cancerbero"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "src/cancerbero",
+  "tests",
+  "fuzz",
+  "README.md",
+  "CHANGELOG.md",
+  "SECURITY.md",
+  "docs",
+  "LICENSE",
+  "pyproject.toml",
+]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["cancerbero"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/real_templates.py" = ["E501"]
+"tests/unit/test_limits.py" = ["B017"]

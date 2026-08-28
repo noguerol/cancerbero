@@ -1,0 +1,223 @@
+{
+  "schema_version": "1.0",
+  "bundle_version": "2026.08.28.1",
+  "advisories": [
+    {
+      "id": "CVE-2024-32878",
+      "title": "GHSA-p5mv-gjc5-mwqv: use of an uninitialized variable in the GGUF loader",
+      "source": "https://github.com/ggml-org/llama.cpp/security/advisories/GHSA-p5mv-gjc5-mwqv",
+      "component": "llama.cpp",
+      "version_scheme": "llama_cpp_build",
+      "affected": {
+        "lte": 2715
+      },
+      "fixed": {
+        "gte": 2740
+      },
+      "artifact_predicates": [
+        {
+          "field": "format",
+          "operator": "present"
+        },
+        {
+          "field": "format",
+          "operator": "equals",
+          "value": "gguf"
+        }
+      ],
+      "severity": "high",
+      "confidence": "high",
+      "explanation": "This llama.cpp build is exposed to a vulnerable GGUF loader path when it loads GGUF artifacts. Applicability records loader exposure; it does not claim that every GGUF file exploits the vulnerability.",
+      "action": "Do not load the artifact with this runtime; update llama.cpp to build b2740 or later.",
+      "published": "2024-04-26",
+      "reviewed": "2026-08-28",
+      "verified_by": "GHSA-p5mv-gjc5-mwqv",
+      "fixed_inferred": false
+    },
+    {
+      "id": "CVE-2024-34359",
+      "title": "GHSA-56xg-wfcc-g829: template injection in llama-cpp-python",
+      "source": "https://github.com/advisories/GHSA-56xg-wfcc-g829",
+      "component": "llama-cpp-python",
+      "version_scheme": "semver",
+      "affected": {
+        "gte": "0.2.30",
+        "lte": "0.2.71"
+      },
+      "fixed": {
+        "gte": "0.2.72"
+      },
+      "artifact_predicates": [
+        {
+          "field": "has_chat_template",
+          "operator": "equals",
+          "value": true
+        }
+      ],
+      "severity": "critical",
+      "confidence": "high",
+      "explanation": "llama-cpp-python versions 0.2.30 through 0.2.71 render chat templates without sufficient sandboxing, allowing potential code execution through malicious template content.",
+      "action": "Update llama-cpp-python to version 0.2.72 or later. If using llama.cpp directly (not the Python binding), this advisory does not apply.",
+      "published": "2024-05-15",
+      "reviewed": "2026-08-28",
+      "verified_by": "GHSA-56xg-wfcc-g829",
+      "fixed_inferred": false
+    },
+    {
+      "id": "CVE-2026-27940",
+      "title": "GHSA-3p4r-fq3f-q74v: heap buffer overflow in GGUF mem_size calculation",
+      "source": "https://github.com/ggml-org/llama.cpp/security/advisories/GHSA-3p4r-fq3f-q74v",
+      "component": "llama.cpp",
+      "version_scheme": "llama_cpp_build",
+      "affected": {
+        "lte": 8145
+      },
+      "fixed": {
+        "gte": 8146
+      },
+      "artifact_predicates": [
+        {
+          "field": "format",
+          "operator": "present"
+        },
+        {
+          "field": "format",
+          "operator": "equals",
+          "value": "gguf"
+        }
+      ],
+      "severity": "high",
+      "confidence": "high",
+      "explanation": "This llama.cpp build is exposed to a vulnerable GGUF loader path when it loads GGUF artifacts. Applicability records loader exposure; it does not claim that every GGUF file exploits the vulnerability.",
+      "action": "Do not load the artifact with this runtime; update llama.cpp to build b8146 or later.",
+      "published": "2026-03-12",
+      "reviewed": "2026-08-28",
+      "verified_by": "GHSA-3p4r-fq3f-q74v",
+      "fixed_inferred": false
+    },
+    {
+      "id": "CVE-2026-33298",
+      "title": "GHSA-96jg-mvhq-q7q7: heap buffer overflow in GGUF tensor parsing",
+      "source": "https://github.com/ggml-org/llama.cpp/security/advisories/GHSA-96jg-mvhq-q7q7",
+      "component": "llama.cpp",
+      "version_scheme": "llama_cpp_build",
+      "affected": {
+        "lt": 7437
+      },
+      "fixed": {
+        "gte": 7824
+      },
+      "artifact_predicates": [
+        {
+          "field": "format",
+          "operator": "present"
+        },
+        {
+          "field": "format",
+          "operator": "equals",
+          "value": "gguf"
+        }
+      ],
+      "severity": "high",
+      "confidence": "high",
+      "explanation": "This llama.cpp build is exposed to a vulnerable GGUF loader path when it loads GGUF artifacts. Applicability records loader exposure; it does not claim that every GGUF file exploits the vulnerability. The primary advisory identifies builds below b7437 as affected and b7824 as patched; builds b7437 through b7823 are therefore left unchecked rather than inferred safe.",
+      "action": "Do not load the artifact with this runtime; update llama.cpp to build b7824 or later.",
+      "published": "2026-03-18",
+      "reviewed": "2026-08-28",
+      "verified_by": "GHSA-96jg-mvhq-q7q7",
+      "fixed_inferred": false
+    },
+    {
+      "id": "CVE-2026-5760",
+      "title": "SGLang template injection via /v1/rerank endpoint",
+      "source": "https://www.kb.cert.org/vuls/id/915947",
+      "component": "sglang",
+      "version_scheme": "semver",
+      "affected": {
+        "lt": "0.5.10"
+      },
+      "fixed": {
+        "gte": "0.5.10"
+      },
+      "artifact_predicates": [
+        {
+          "field": "has_chat_template",
+          "operator": "equals",
+          "value": true
+        }
+      ],
+      "severity": "high",
+      "confidence": "medium",
+      "explanation": "SGLang renders tokenizer.chat_template via jinja2.Environment() instead of ImmutableSandboxedEnvironment on the /v1/rerank endpoint. The PoC public exploits SGLang 0.5.9; versions before 0.5.10 are affected. Earlier ranges in this bundle (< 0.4.0) were incorrect.",
+      "action": "If using SGLang, update to version 0.5.10 or later. This advisory does not apply to llama.cpp.",
+      "published": "2026-06-15",
+      "reviewed": "2026-08-28",
+      "verified_by": "CVE-2026-5760",
+      "fixed_inferred": false
+    },
+    {
+      "id": "CVE-2026-7482",
+      "title": "Bleeding Llama: heap out-of-bounds read in Ollama GGUF loader",
+      "source": "https://github.com/advisories/GHSA-x8qc-fggm-mpqg",
+      "component": "ollama",
+      "version_scheme": "semver",
+      "affected": {
+        "lt": "0.17.1"
+      },
+      "fixed": {
+        "gte": "0.17.1"
+      },
+      "artifact_predicates": [
+        {
+          "field": "format",
+          "operator": "present"
+        },
+        {
+          "field": "format",
+          "operator": "equals",
+          "value": "gguf"
+        }
+      ],
+      "severity": "critical",
+      "confidence": "high",
+      "explanation": "Ollama versions before 0.17.1 contain a heap out-of-bounds read in the GGUF loader (CVSS 9.1). Approximately 300,000 servers were affected. This advisory applies when Ollama is the detected runtime.",
+      "action": "Update Ollama to version 0.17.1 or later. This advisory does not apply to llama.cpp directly.",
+      "published": "2026-07-15",
+      "reviewed": "2026-08-28",
+      "verified_by": "GHSA-x8qc-fggm-mpqg",
+      "fixed_inferred": false
+    },
+    {
+      "id": "GGUF-2026-05-001",
+      "title": "Multiple vulnerabilities in GGUF parser (oss-security 2026-05-15)",
+      "source": "https://seclists.org/oss-sec/2026/q2/546",
+      "component": "llama.cpp",
+      "version_scheme": "llama_cpp_build",
+      "affected": {
+        "lt": 8000
+      },
+      "fixed": {
+        "gte": 8100
+      },
+      "fixed_inferred": true,
+      "artifact_predicates": [
+        {
+          "field": "format",
+          "operator": "present"
+        },
+        {
+          "field": "format",
+          "operator": "equals",
+          "value": "gguf"
+        }
+      ],
+      "severity": "high",
+      "confidence": "medium",
+      "explanation": "Six weaknesses were reported in gguf.cpp and gguf_reader.py in May 2026, including integer overflows and out-of-bounds reads. The oss-security advisory lists remediations by severity but does not assign specific build numbers. The fixed build b8100 is inferred from the remediation timeline, not directly stated in the advisory.",
+      "action": "Update llama.cpp to build b8100 or later to address all reported GGUF parser issues. The exact fix build may vary by specific issue.",
+      "published": "2026-05-15",
+      "reviewed": "2026-08-28",
+      "verified_by": "oss-security 2026-05-15 (inferred build)"
+    }
+  ]
+}

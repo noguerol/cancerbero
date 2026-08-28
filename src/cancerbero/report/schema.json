@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cancerbero.dev/schemas/audit-report-1.0.json",
+  "title": "Cancerbero deterministic audit report",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "cancerbero_version",
+    "command",
+    "targets",
+    "artifacts",
+    "runtimes",
+    "findings",
+    "bundle",
+    "verdict",
+    "exit_code",
+    "options",
+    "coverage",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "cancerbero_version": {"type": "string"},
+    "command": {"type": "array", "items": {"type": "string"}},
+    "targets": {"type": "array", "items": {"type": "object"}},
+    "artifacts": {"type": "array", "items": {"type": "object"}},
+    "runtimes": {"type": "array", "items": {"type": "object"}},
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "head", "check", "status", "severity", "confidence", "evidence", "mandatory"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^cbr\\."},
+          "head": {"enum": ["provenance", "loading", "behavior"]},
+          "check": {"type": "string"},
+          "status": {"enum": ["verified", "clean", "suspicious", "unchecked", "not_applicable", "error"]},
+          "severity": {"enum": ["info", "low", "medium", "high", "critical"]},
+          "confidence": {"enum": ["low", "medium", "high"]},
+          "summary": {"type": "string"},
+          "evidence": {"type": "object"},
+          "action": {"type": ["string", "null"]},
+          "references": {"type": "array", "items": {"type": "string"}},
+          "mandatory": {"type": "boolean"}
+        },
+        "additionalProperties": false
+      }
+    },
+    "bundle": {"type": ["object", "null"]},
+    "verdict": {"enum": ["suitable", "not_suitable", "undetermined"]},
+    "exit_code": {"enum": [0, 1, 2, 3]},
+    "options": {"type": "object"},
+    "coverage": {"type": "object"},
+    "limitations": {"type": "array", "items": {"type": "string"}},
+    "observations": {"type": "object"}
+  },
+  "additionalProperties": false
+}

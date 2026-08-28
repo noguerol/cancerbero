@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "bundle_version": "2026.08.28.1",
+  "published_at": "2026-08-28T00:00:00Z",
+  "expires_at": "2027-08-28T00:00:00Z",
+  "advisories": {
+    "path": "advisories.json",
+    "sha256": "bf844af458f21184b624890076b90638dc9e480d797a47a4679daef55d8ffefe",
+    "count": 7
+  }
+}

@@ -1,0 +1,179 @@
+# GitHub Actions workflow for Cancerbero model security checks
+# See docs/guides/cicd.md for documentation
+
+name: Model Security Check
+
+on:
+  push:
+    paths:
+      - 'models/**'
+      - '*.gguf'
+  pull_request:
+    paths:
+      - 'models/**'
+      - '*.gguf'
+  workflow_dispatch:
+
+jobs:
+  # Basic model check
+  check-models:
+    name: Check Models
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install Cancerbero
+        run: pip install cancerbero
+      
+      - name: Check models
+        id: check
+        run: |
+          cancerbero check ./models/ \
+            --no-interactive \
+            --no-banner \
+            --json report.json
+        continue-on-error: true
+      
+      - name: Upload JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cancerbero-report
+          path: report.json
+          retention-days: 30
+      
+      - name: Gate on findings
+        if: steps.check.outcome == 'failure'
+        run: |
+          echo "::error::Model security check failed!"
+          exit 1
+
+  # SARIF integration for GitHub Code Scanning
+  security-sarif:
+    name: Security SARIF
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install Cancerbero
+        run: pip install cancerbero
+      
+      - name: Generate SARIF report
+        run: |
+          cancerbero check ./models/ \
+            --no-interactive \
+            --no-banner \
+            --format sarif > results.sarif
+      
+      - name: Upload SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: results.sarif
+          category: cancerbero
+
+  # Matrix testing for multiple models
+  matrix-check:
+    name: Check ${{ matrix.model }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        model:
+          - models/llama-3.1-8b.gguf
+          - models/qwen3.6-27b.gguf
+          - models/gemma-4-31b.gguf
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      
+      - name: Install Cancerbero
+        run: pip install cancerbero
+      
+      - name: Check ${{ matrix.model }}
+        id: check
+        run: |
+          cancerbero check ${{ matrix.model }} \
+            --no-interactive \
+            --no-banner \
+            --json report-${{ matrix.model }}.json
+        continue-on-error: true
+      
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-${{ matrix.model }}
+          path: report-${{ matrix.model }}.json
+          retention-days: 30
+      
+      - name: Gate on findings
+        if: steps.check.outcome == 'failure'
+        run: |
+          echo "::error::Model ${{ matrix.model }} failed security check!"
+          exit 1
+
+  # Summary job
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [check-models, security-sarif, matrix-check]
+    if: always()
+    
+    steps:
+      - name: Download reports
+        uses: actions/download-artifact@v4
+        with:
+          path: reports
+      
+      - name: Generate summary
+        run: |
+          echo "## Model Security Check Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Check main report
+          if [ -f reports/cancerbero-report/report.json ]; then
+            verdict=$(jq -r '.verdict' reports/cancerbero-report/report.json)
+            echo "### Overall Verdict: $verdict" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          # Check matrix reports
+          echo "### Individual Models" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Model | Verdict | Exit Code |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|---------|-----------|" >> $GITHUB_STEP_SUMMARY
+          
+          for report in reports/report-*/report.json; do
+            if [ -f "$report" ]; then
+              model=$(basename $(dirname "$report") | sed 's/report-//')
+              verdict=$(jq -r '.verdict' "$report")
+              exit_code=$(jq -r '.exit_code' "$report")
+              echo "| $model | $verdict | $exit_code |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+```
