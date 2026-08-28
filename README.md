@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/cancerbero-banner.png" alt="Cancerbero" width="900">
+</p>
+
 # Cancerbero
 
 Cancerbero is a local, offline-first command-line tool that inspects GGUF artifacts **before** they are handed to a llama.cpp runtime. It answers bounded questions about artifact structure, declared identity, chat-template risk, companion configuration, and the applicability of known runtime advisories.
