@@ -50,9 +50,7 @@ def _load_json_fallback(config_path: Path) -> dict[str, Any]:
         except OSError:
             return {}
         if raw.strip() and _looks_like_yaml(raw):
-            raise ConfigFileError(
-                f"{config_path}: install PyYAML or convert to JSON"
-            ) from exc
+            raise ConfigFileError(f"{config_path}: install PyYAML or convert to JSON") from exc
         # Non-JSON, non-YAML content: fall back to defaults rather than
         # failing the whole `cancerbero check` run on stray files.
         return {}

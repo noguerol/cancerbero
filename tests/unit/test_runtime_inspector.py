@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -149,6 +150,7 @@ class TestExecutableFormat:
 
 
 class TestPermissions:
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX file mode bits only")
     def test_writable_by_others(self, tmp_path: Path) -> None:
         binary = tmp_path / "llama-cli"
         binary.write_bytes(b"\x7fELF" + b"\x00" * 100)
@@ -156,6 +158,7 @@ class TestPermissions:
         facts = inspect_runtime(binary)
         assert facts.writable_by_others is True
 
+    @pytest.mark.skipif(os.name != "posix", reason="POSIX file mode bits only")
     def test_not_writable_by_others(self, tmp_path: Path) -> None:
         binary = tmp_path / "llama-cli"
         binary.write_bytes(b"\x7fELF" + b"\x00" * 100)

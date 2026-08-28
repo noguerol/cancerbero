@@ -72,9 +72,7 @@ class TestRuntimeIntegration:
         # Use runtime_version override to bypass build-info parsing
         # cross-platform fragility; the integration target is the
         # verdict policy, not the file-based build detection.
-        options = CheckOptions(
-            targets=(path,), runtime=binary, runtime_version="9500"
-        )
+        options = CheckOptions(targets=(path,), runtime=binary, runtime_version="9500")
         report = run_check(options, command=["cancerbero", "check", str(path)])
         assert report.verdict is Verdict.SUITABLE
 

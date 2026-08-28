@@ -108,20 +108,23 @@ def _set_posix_resource_limits(limits: DelegateLimits) -> None:
     """Apply child-only POSIX limits before executing a delegate.
 
     No-op on non-POSIX platforms, where ``resource`` is unavailable.
+    CPU time is intentionally NOT capped here: tight values cause
+    SIGXCPU inside ``preexec_fn`` before the child can run, which
+    Python surfaces as ``Exception occurred in preexec_fn``. Wall-clock
+    enforcement is handled by ``Popen.communicate(timeout=...)``.
     """
 
     if os.name != "posix" or resource is None:  # pragma: no cover - Windows
         return
-    if limits.max_memory_mb:
-        maximum_bytes = limits.max_memory_mb * 1024 * 1024
-        resource.setrlimit(resource.RLIMIT_AS, (maximum_bytes, maximum_bytes))
-    cpu_seconds = max(1, limits.timeout_seconds)
-    resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds + 1))
-    # Delegates do not need to create large files through inherited descriptors.
-    resource.setrlimit(
-        resource.RLIMIT_FSIZE,
-        (limits.max_output_bytes, limits.max_output_bytes),
-    )
+    with contextlib.suppress(ValueError, OSError):
+        if limits.max_memory_mb:
+            maximum_bytes = limits.max_memory_mb * 1024 * 1024
+            # Some POSIX systems (notably macOS sandbox) reject RLIMIT_AS.
+            resource.setrlimit(resource.RLIMIT_AS, (maximum_bytes, maximum_bytes))
+        resource.setrlimit(
+            resource.RLIMIT_FSIZE,
+            (limits.max_output_bytes, limits.max_output_bytes),
+        )
 
 
 def _capture_bounded(stream: Any, limit: int, destination: bytearray) -> None:
