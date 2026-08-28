@@ -25,6 +25,10 @@ def _looks_like_yaml(text: str) -> bool:
             return True
         if ":" in stripped and "://" not in stripped:
             return True
+        # Square brackets introduce YAML flow sequences; JSON would already
+        # have rejected unbalanced brackets before our fallback ran.
+        if "[" in stripped or "]" in stripped:
+            return True
     return False
 
 
@@ -46,7 +50,11 @@ def _load_json_fallback(config_path: Path) -> dict[str, Any]:
         except OSError:
             return {}
         if raw.strip() and _looks_like_yaml(raw):
-            raise ConfigFileError(f"{config_path}: Install PyYAML or convert to JSON") from exc
+            raise ConfigFileError(
+                f"{config_path}: install PyYAML or convert to JSON"
+            ) from exc
+        # Non-JSON, non-YAML content: fall back to defaults rather than
+        # failing the whole `cancerbero check` run on stray files.
         return {}
     return data if isinstance(data, dict) else {}
 
@@ -130,7 +138,7 @@ def load_config(config_path: Path | None = None) -> CancerberoConfig:
 
     data: Any = {}
     try:
-        import yaml
+        import yaml  # type: ignore[import-not-found]
 
         with open(config_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}

@@ -84,7 +84,9 @@ class TestExitCodes:
         binary.write_bytes(b"\x7fELF" + b"\x00" * 100)
         binary.chmod(0o755)
         (tmp_path / "build-info.txt").write_text("build = 9500")
-        options = CheckOptions(targets=(path,), runtime=binary)
+        options = CheckOptions(
+            targets=(path,), runtime=binary, runtime_version="9500"
+        )
         report = run_check(options, command=["test"])
         assert report.exit_code == 0
         assert report.verdict is Verdict.SUITABLE

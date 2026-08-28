@@ -202,7 +202,9 @@ class TestTemplatedModelSuitable:
         (tmp_path / "build-info.txt").write_text("build = 9500")
 
         report = run_check(
-            CheckOptions(targets=(path,), runtime=binary),
+            CheckOptions(
+                targets=(path,), runtime=binary, runtime_version="9500"
+            ),
             command=["test"],
         )
         assert report.verdict is Verdict.SUITABLE

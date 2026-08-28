@@ -441,12 +441,21 @@ def inspect_runtime(
     except OSError as error:
         raise RuntimeInspectionError(f"Cannot stat runtime {original}: {error}") from error
 
+    # POSIX permission bits are meaningless on Windows. Use safe defaults
+    # there so cross-platform CI does not produce misleading warnings.
+    if os.name == "posix":
+        writable_by_group = bool(file_stat.st_mode & stat.S_IWGRP)
+        writable_by_others = bool(file_stat.st_mode & stat.S_IWOTH)
+    else:
+        writable_by_group = False
+        writable_by_others = False
+
     facts = RuntimeFacts(
         path=original,
         component=_component_name(original),
         executable_format=detect_executable_format(binary),
-        writable_by_group=bool(file_stat.st_mode & stat.S_IWGRP),
-        writable_by_others=bool(file_stat.st_mode & stat.S_IWOTH),
+        writable_by_group=writable_by_group,
+        writable_by_others=writable_by_others,
         flags=_flags_from_nearby_files(binary),
     )
 

@@ -52,7 +52,7 @@ class TestLoadConfig:
         path = tmp_path / "cancerbero.yaml"
         path.write_text("runtime: ./llama-cli\n", encoding="utf-8")
         monkeypatch.setitem(sys.modules, "yaml", None)
-        with pytest.raises(ConfigFileError, match="Install PyYAML or convert to JSON"):
+        with pytest.raises(ConfigFileError, match="install PyYAML or convert to JSON"):
             load_config(path)
 
     def test_missing_pyyaml_non_config_returns_defaults(

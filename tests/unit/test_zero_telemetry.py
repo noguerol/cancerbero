@@ -23,7 +23,7 @@ class TestZeroTelemetry:
         for py_file in src_dir.rglob("*.py"):
             if "__pycache__" in str(py_file):
                 continue
-            content = py_file.read_text()
+            content = py_file.read_text(encoding="utf-8")
             # Check for direct imports
             assert "import requests" not in content, f"Found 'import requests' in {py_file}"
             assert "from requests" not in content, f"Found 'from requests' in {py_file}"
@@ -34,7 +34,7 @@ class TestZeroTelemetry:
         for py_file in src_dir.rglob("*.py"):
             if "__pycache__" in str(py_file):
                 continue
-            content = py_file.read_text()
+            content = py_file.read_text(encoding="utf-8")
             assert "import httpx" not in content, f"Found 'import httpx' in {py_file}"
             assert "from httpx" not in content, f"Found 'from httpx' in {py_file}"
 
@@ -44,7 +44,7 @@ class TestZeroTelemetry:
         for py_file in src_dir.rglob("*.py"):
             if "__pycache__" in str(py_file):
                 continue
-            content = py_file.read_text()
+            content = py_file.read_text(encoding="utf-8")
             assert "urllib.request" not in content, f"Found 'urllib.request' in {py_file}"
             assert "urllib3" not in content, f"Found 'urllib3' in {py_file}"
 
@@ -54,7 +54,7 @@ class TestZeroTelemetry:
         for py_file in src_dir.rglob("*.py"):
             if "__pycache__" in str(py_file):
                 continue
-            content = py_file.read_text()
+            content = py_file.read_text(encoding="utf-8")
             assert "import socket" not in content, f"Found 'import socket' in {py_file}"
             assert "from socket" not in content, f"Found 'from socket' in {py_file}"
 
@@ -65,7 +65,7 @@ class TestZeroTelemetry:
         for py_file in src_dir.rglob("*.py"):
             if "__pycache__" in str(py_file):
                 continue
-            content = py_file.read_text()
+            content = py_file.read_text(encoding="utf-8")
             for cmd in network_commands:
                 # Only flag if it looks like a command execution, not a comment
                 if f'"{cmd}' in content or f"'{cmd}" in content:
@@ -100,14 +100,14 @@ class TestZeroTelemetry:
             # Skip excluded directories
             if any(d in py_file.parts for d in excluded_dirs):
                 continue
-            content = py_file.read_text().lower()
+            content = py_file.read_text(encoding="utf-8").lower()
             for keyword in analytics_keywords:
                 assert keyword not in content, f"Found analytics keyword '{keyword}' in {py_file}"
 
     def test_dependencies_are_minimal(self) -> None:
         """Cancerbero's runtime dependencies should be minimal (only Jinja2)."""
         pyproject = Path(__file__).parent.parent.parent / "pyproject.toml"
-        content = pyproject.read_text()
+        content = pyproject.read_text(encoding="utf-8")
         # Check that Jinja2 is the only runtime dependency
         # The dependencies section should only contain Jinja2
         assert "jinja2" in content.lower(), "Jinja2 should be a dependency"
@@ -144,6 +144,6 @@ class TestZeroTelemetry:
             # Skip excluded directories
             if any(d in py_file.parts for d in excluded_dirs):
                 continue
-            content = py_file.read_text()
+            content = py_file.read_text(encoding="utf-8")
             for var in telemetry_env_vars:
                 assert var not in content, f"Found telemetry env var '{var}' in {py_file}"
