@@ -105,8 +105,8 @@ If any core check is missing (unchecked/error), the verdict is `UNDETERMINED`. T
 
 ## Quick Links
 
-- [GitHub Repository](https://github.com/cancerbero-security/cancerbero)
-- [Issue Tracker](https://github.com/cancerbero-security/cancerbero/issues)
+- [GitHub Repository](https://github.com/noguerol/cancerbero)
+- [Issue Tracker](https://github.com/noguerol/cancerbero/issues)
 - [Security Policy](../SECURITY.md)
 - [Changelog](../CHANGELOG.md)
 
@@ -160,7 +160,7 @@ docs/
 
 ```bash
 # From source
-git clone https://github.com/cancerbero-security/cancerbero.git
+git clone https://github.com/noguerol/cancerbero.git
 cd cancerbero
 pip install -e .
 
@@ -211,15 +211,15 @@ We welcome contributions! See our [Contributing Guide](../CONTRIBUTING.md) for d
 
 ### Reporting Issues
 
-- [Bug Reports](https://github.com/cancerbero-security/cancerbero/issues/new?template=bug_report.md)
-- [Feature Requests](https://github.com/cancerbero-security/cancerbero/issues/new?template=feature_request.md)
+- [Bug Reports](https://github.com/noguerol/cancerbero/issues/new?template=bug_report.md)
+- [Feature Requests](https://github.com/noguerol/cancerbero/issues/new?template=feature_request.md)
 - [Security Vulnerabilities](../SECURITY.md)
 
 ### Development
 
 ```bash
 # Clone and install
-git clone https://github.com/cancerbero-security/cancerbero.git
+git clone https://github.com/noguerol/cancerbero.git
 cd cancerbero
 pip install -e ".[dev]"
 

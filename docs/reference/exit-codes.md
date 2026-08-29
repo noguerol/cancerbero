@@ -6,9 +6,10 @@ Cancerbero uses exit codes to communicate the result of inspections to automatio
 
 | Code | Verdict | Meaning | Pipeline Action |
 |------|---------|---------|-----------------|
-| `0` | SUITABLE | No blocking conditions found | Continue |
+| `0` | SUITABLE | No blocking conditions found; every core check produced positive evidence | Continue |
+| `0` | CLEAN | No suspicious findings on the checks performed (typically: no `--runtime` supplied, so the runtime advisory join was not in scope) | Continue |
 | `1` | NOT SUITABLE | Confirmed risk condition found | Block |
-| `2` | UNDETERMINED | Required evidence missing | Review |
+| `2` | UNDETERMINED | A check ran and could not complete; a core check was missing beyond the runtime join | Review |
 | `3` | ERROR | Invalid input or operational failure | Fail |
 
 ## Detailed Explanation
@@ -19,6 +20,7 @@ Cancerbero uses exit codes to communicate the result of inspections to automatio
 - All mandatory checks completed successfully
 - No suspicious findings detected
 - No mandatory unchecked findings
+- A runtime advisory join produced positive evidence (the runtime is in scope)
 
 **What it means**:
 - The artifact passed all checks Cancerbero performed
@@ -32,8 +34,25 @@ Cancerbero uses exit codes to communicate the result of inspections to automatio
 
 **Example**:
 ```bash
-cancerbero check ./model.gguf
+cancerbero check ./model.gguf --runtime ./llama-cli --runtime-version b8146
 echo $?  # 0
+```
+
+### Exit Code 0: CLEAN
+
+**When it occurs**:
+- The artifact was inspected, no suspicious findings were produced
+- A runtime was not supplied, so the runtime advisory join was not in scope
+- All in-scope core checks produced positive evidence
+
+**What it means**:
+- The artifact passed every check Cancerbero could run without a runtime
+- This is a weaker claim than `SUITABLE`; re-run with `--runtime` to upgrade
+
+**Example**:
+```bash
+cancerbero check ./model.gguf
+echo $?  # 0  (CLEAN, not SUITABLE — runtime join was not in scope)
 ```
 
 ### Exit Code 1: NOT SUITABLE
@@ -64,6 +83,7 @@ echo $?  # 1 (if CVE affects build 5000)
 **When it occurs**:
 - At least one mandatory finding has status `unchecked` or `error`
 - No suspicious findings detected
+- AND at least one non-runtime core check was missing (otherwise the verdict downgrades to `CLEAN`)
 
 **What it means**:
 - Required evidence was missing
@@ -71,7 +91,7 @@ echo $?  # 1 (if CVE affects build 5000)
 - The verdict cannot be determined
 
 **Common causes**:
-- Runtime build unknown
+- Runtime build unknown (when a runtime IS supplied)
 - No expected digest provided
 - Knowledge bundle expired
 - GGUF parsing error
@@ -109,11 +129,15 @@ echo $?  # 3
 ## Exit Code Logic
 
 ```
-IF any finding is SUSPICIOUS and MANDATORY
+IF any finding is SUSPICIOUS and the severity × classification matrix blocks
   THEN exit_code = 1 (NOT SUITABLE)
 
 ELSE IF any finding is (UNCHECKED or ERROR) and MANDATORY
+   OR a non-runtime core check is missing
   THEN exit_code = 2 (UNDETERMINED)
+
+ELSE IF runtime advisory join was not in scope (no runtime supplied)
+  THEN exit_code = 0 (CLEAN)
 
 ELSE
   THEN exit_code = 0 (SUITABLE)
@@ -197,6 +221,7 @@ The exit code is a summary of the verdict for automation. The full report contai
 | Exit Code | Verdict | Report Contains |
 |-----------|---------|-----------------|
 | `0` | SUITABLE | All findings (including informational) |
+| `0` | CLEAN | Findings from the checks performed; runtime join explicitly skipped |
 | `1` | NOT SUITABLE | Suspicious findings with actions |
 | `2` | UNDETERMINED | Unchecked findings with reasons |
 | `3` | ERROR | Error messages |

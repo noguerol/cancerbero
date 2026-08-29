@@ -45,13 +45,15 @@ class TestMetadataOnlyPerformance:
 class TestExitCodes:
     """Verify exit codes match the documented policy."""
 
-    def test_model_without_runtime_is_undetermined(self, tmp_path: Path) -> None:
-        """Without runtime, the runtime_advisory_join core check is missing → undetermined."""
+    def test_model_without_runtime_is_clean(self, tmp_path: Path) -> None:
+        """Without runtime, the only missing core check is the runtime join;
+        the verdict is therefore ``CLEAN`` (exit 0) rather than UNDETERMINED
+        (G3)."""
         from cancerbero.audit import CheckOptions, run_check
 
         path = write_gguf(tmp_path / "ok.gguf")
         report = run_check(CheckOptions(targets=(path,)), command=["test"])
-        assert report.exit_code == 2
+        assert report.exit_code == 0
 
     def test_invalid_input_exits_three(self) -> None:
         from cancerbero.cli import main

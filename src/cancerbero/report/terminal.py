@@ -26,6 +26,10 @@ _VERDICT_LINES = {
         "UNDETERMINED",
         "Required evidence was missing or a check could not complete.",
     ),
+    Verdict.CLEAN: (
+        "CLEAN",
+        "No suspicious findings on the checks performed. Re-run with --runtime to include runtime advisories.",
+    ),
 }
 
 

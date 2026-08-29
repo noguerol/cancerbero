@@ -7,9 +7,14 @@ from pathlib import Path
 
 from cancerbero.domain import ArtifactFacts, Confidence, Finding, Severity, Status, TensorDescriptor
 from cancerbero.gguf.limits import DEFAULT_LIMITS, ParserLimits
-from cancerbero.gguf.reader import GGML_TYPE_SIZES, GgufDocument, read_gguf
+from cancerbero.gguf.reader import GgufDocument, read_gguf
 
-# Patterns that might indicate suspicious metadata
+# Patterns that might indicate suspicious metadata.
+# ``URL in metadata`` is suppressed on a small allowlist of well-known
+# benign GGUF keys (``general.source.url``, ``general.license.link`` ...)
+# because every modern model carries those fields and emitting a finding
+# per model drowned legitimate reports (blue finding from the external
+# audit).
 _SUSPICIOUS_PATTERNS = [
     (re.compile(r"https?://", re.IGNORECASE), "URL in metadata"),
     (re.compile(r"eval\s*\(", re.IGNORECASE), "eval() call in metadata"),
@@ -19,6 +24,17 @@ _SUSPICIOUS_PATTERNS = [
     (re.compile(r"__import__", re.IGNORECASE), "__import__ in metadata"),
     (re.compile(r"socket\.", re.IGNORECASE), "socket reference in metadata"),
 ]
+_URL_ALLOWLIST_KEYS = frozenset(
+    {
+        "general.source.url",
+        "general.url",
+        "general.license.link",
+        "general.homepage",
+        "general.repository",
+        "general.documentation",
+        "general.base_model.repo",
+    }
+)
 
 
 def _check_metadata_safety(doc: GgufDocument) -> list[Finding]:
@@ -30,6 +46,10 @@ def _check_metadata_safety(doc: GgufDocument) -> list[Finding]:
         if not isinstance(value, str):
             continue
         for pattern, description in _SUSPICIOUS_PATTERNS:
+            # Suppress the noisy ``URL in metadata`` finding on the small
+            # allowlist of benign provenance keys.
+            if pattern.pattern == r"https?://" and key.lower() in _URL_ALLOWLIST_KEYS:
+                continue
             if pattern.search(value):
                 findings.append(
                     Finding(
@@ -49,89 +69,6 @@ def _check_metadata_safety(doc: GgufDocument) -> list[Finding]:
                     )
                 )
                 break  # Only report first match per key
-    return findings
-
-
-def _check_quantization_integrity(doc: GgufDocument) -> list[Finding]:
-    """Check for quantization integrity issues (v0.5 Phase 4).
-
-    Based on research:
-    - LLMQuA (ACM Web Conference 2026): Backdoor injection during quantization
-    - arXiv 2512.06243: Quantization blindspots break backdoor defenses
-    - arXiv 2606.28962: FlipGuard defense against QCBs
-    - arXiv 2606.20254: QVec removing QCBs via task arithmetic
-
-    These checks detect:
-    - Unusual quantization parameters
-    - Quantization type mismatches
-    - Tensor anomalies that could indicate backdoor activation
-    - Alignment issues that could hide data
-    """
-    from cancerbero.domain import Confidence, Severity, Status
-
-    findings: list[Finding] = []
-
-    # The canonical set of known GGML tensor types lives in the reader's
-    # GGML_TYPE_SIZES table (type id -> (block elements, block bytes)). The
-    # inspector must not keep a second, drifting copy of the enum: reader and
-    # inspector always agree on which type ids are known.
-    # Check for unknown quantization types
-    for tensor in doc.tensors:
-        if tensor.ggml_type not in GGML_TYPE_SIZES:
-            findings.append(
-                Finding(
-                    id="cbr.gguf.unknown_quant_type",
-                    head="loading",
-                    check="quantization_integrity",
-                    status=Status.UNCHECKED,
-                    severity=Severity.LOW,
-                    confidence=Confidence.HIGH,
-                    summary=(
-                        f"Tensor '{tensor.name}' uses unknown quantization type "
-                        f"{tensor.ggml_type}. This may be a custom or experimental type."
-                    ),
-                    evidence={
-                        "tensor": tensor.name,
-                        "ggml_type": tensor.ggml_type,
-                    },
-                    mandatory=False,
-                )
-            )
-
-    # Check for alignment issues - this is a parser CVE precondition
-    # GGUF spec requires offsets to be multiples of alignment
-    # Misalignment indicates corruption or malicious modification
-    if doc.alignment > 0:
-        for tensor in doc.tensors:
-            if tensor.offset % doc.alignment != 0:
-                findings.append(
-                    Finding(
-                        id="cbr.gguf.tensor_misalignment",
-                        head="loading",
-                        check="quantization_integrity",
-                        status=Status.SUSPICIOUS,
-                        severity=Severity.HIGH,
-                        confidence=Confidence.HIGH,
-                        classification=Confidence.HIGH,
-                        summary=(
-                            f"Tensor '{tensor.name}' offset ({tensor.offset}) "
-                            f"is not aligned to {doc.alignment} bytes. "
-                            f"This violates the GGUF specification and may indicate "
-                            f"corruption or malicious modification."
-                        ),
-                        evidence={
-                            "tensor": tensor.name,
-                            "offset": tensor.offset,
-                            "alignment": doc.alignment,
-                        },
-                        action=(
-                            "Do not load this model. The tensor alignment violates "
-                            "the GGUF specification. Re-obtain from a trusted source."
-                        ),
-                        mandatory=True,
-                    )
-                )
-
     return findings
 
 
@@ -171,29 +108,15 @@ def inspect_gguf(
     # Check for suspicious metadata patterns
     findings.extend(_check_metadata_safety(doc))
 
-    # Check for zero-sized tensor dimensions
-    for tensor in doc.tensors:
-        if any(d == 0 for d in tensor.dimensions):
-            findings.append(
-                Finding(
-                    id="cbr.gguf.zero_dimension",
-                    head="loading",
-                    check="gguf_structure",
-                    status=Status.SUSPICIOUS,
-                    severity=Severity.MEDIUM,
-                    confidence=Confidence.HIGH,
-                    summary=(f"Tensor '{tensor.name}' has a zero-sized dimension"),
-                    evidence={
-                        "tensor": tensor.name,
-                        "dimensions": list(tensor.dimensions),
-                    },
-                    action=("Re-convert the model from source with an updated converter."),
-                )
-            )
-
-    # Quantization integrity checks (v0.5 Phase 4)
-    # Based on: LLMQuA (ACM Web Conference 2026), arXiv 2512.06243, arXiv 2606.28962
-    findings.extend(_check_quantization_integrity(doc))
+    # Quantization integrity findings that COULD have been emitted here are
+    # all provably dead: the reader raises ``GgufTypeError`` for unknown
+    # tensor types, ``GgufRangeError`` for misaligned offsets, and
+    # ``GgufValidationError`` for zero-sized dimensions. By the time we
+    # reach this point every tensor descriptor already passed those checks.
+    # The previous ``_check_quantization_integrity`` and zero-dimension
+    # loops therefore produced no findings against real GGUF files; their
+    # tests passed only because they constructed ``GgufDocument`` objects
+    # in memory, bypassing the reader. See docs/decisions for the rationale.
 
     tensors = [
         TensorDescriptor(
@@ -223,7 +146,37 @@ def inspect_gguf(
         metadata=doc.metadata,
         tensors=tensors,
         bytes_read=doc.bytes_read,
+        omitted_metadata_keys=doc.omitted_metadata_keys,
     )
+
+    # Surface coverage gaps so the operator knows metadata was inspected
+    # incompletely. We emit one finding per omitted key with a stable id
+    # (no counters, no per-instance variation) so deduplication and
+    # --explain continue to work.
+    if doc.omitted_metadata_keys:
+        findings.append(
+            Finding(
+                id="cbr.gguf.metadata_omitted",
+                head="loading",
+                check="gguf_structure",
+                status=Status.UNCHECKED,
+                severity=Severity.LOW,
+                confidence=Confidence.HIGH,
+                summary=(
+                    f"Parser retained {doc.metadata_count - len(doc.omitted_metadata_keys)}"
+                    f" of {doc.metadata_count} metadata keys; {len(doc.omitted_metadata_keys)}"
+                    " key(s) were skipped because the retained-metadata budget"
+                    f" ({doc.metadata_end} bytes analysed, {len(doc.omitted_metadata_keys)}"
+                    " omitted). Re-run with stricter limits or trust the model source."
+                ),
+                evidence={
+                    "omitted_keys": list(doc.omitted_metadata_keys),
+                    "retained_count": doc.metadata_count - len(doc.omitted_metadata_keys),
+                    "metadata_count": doc.metadata_count,
+                },
+                mandatory=False,
+            )
+        )
 
     return facts, findings
 

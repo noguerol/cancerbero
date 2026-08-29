@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from cancerbero.domain import (
@@ -11,6 +12,7 @@ from cancerbero.domain import (
     Verdict,
 )
 from cancerbero.report import canonical_json, render_markdown, render_terminal
+from tests.fixtures_factory import write_gguf
 
 
 def make_report() -> AuditReport:
@@ -91,3 +93,43 @@ def test_markdown_escapes_untrusted_finding_summary_and_evidence() -> None:
     assert "*emphasis*" not in text
     assert "[link]" not in text
     assert "<tag>" not in text
+
+
+class TestSarifConformity:
+    """Regression tests for M4: SARIF results carry locations and artifactChanges."""
+
+    def test_results_have_locations(self, tmp_path: Path) -> None:
+        from cancerbero.audit import CheckOptions, run_check
+        from cancerbero.report.sarif import render_sarif
+
+        path = write_gguf(tmp_path / "model.gguf")
+        report = run_check(CheckOptions(targets=(path,)), command=["test"])
+        sarif = json.loads(render_sarif(report))
+        results = sarif["runs"][0]["results"]
+        # Even if there are no SUSPICIOUS/ERROR findings (CLEAN verdict),
+        # any result we DO emit must have a location.
+        for r in results:
+            assert "locations" in r, f"Result {r.get('ruleId')} missing locations"
+            loc = r["locations"][0]
+            assert "physicalLocation" in loc or "logicalLocation" in loc
+
+    def test_fixes_have_artifact_changes(self, tmp_path: Path) -> None:
+        from cancerbero.audit import CheckOptions, run_check
+        from cancerbero.report.sarif import render_sarif
+
+        path = write_gguf(
+            tmp_path / "model.gguf",
+            chat_template="{{ os.system('evil') }}",
+        )
+        report = run_check(CheckOptions(targets=(path,)), command=["test"])
+        sarif = json.loads(render_sarif(report))
+        results = sarif["runs"][0]["results"]
+        suspicious = [r for r in results if r.get("level") in ("error", "warning")]
+        assert suspicious, results
+        for r in suspicious:
+            assert "fixes" in r, f"Result {r.get('ruleId')} missing fixes"
+            for fix in r["fixes"]:
+                assert "artifactChanges" in fix, (
+                    f"Fix on {r.get('ruleId')} missing artifactChanges (SARIF 2.1.0)"
+                )
+                assert len(fix["artifactChanges"]) >= 1

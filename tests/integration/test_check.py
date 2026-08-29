@@ -12,13 +12,15 @@ from tests.fixtures_factory import write_gguf
 
 
 class TestModelOnlyCheck:
-    def test_valid_model_without_runtime_is_undetermined(self, tmp_path: Path) -> None:
-        """Without runtime, the runtime_advisory_join core check is missing → undetermined."""
+    def test_valid_model_without_runtime_is_clean(self, tmp_path: Path) -> None:
+        """Without runtime, the runtime_advisory_join core check is missing
+        but the only missing core check is the runtime join; the verdict is
+        therefore ``CLEAN`` (exit 0), not UNDETERMINED (G3)."""
         path = write_gguf(tmp_path / "model.gguf")
         options = CheckOptions(targets=(path,))
         report = run_check(options, command=["cancerbero", "check", str(path)])
-        assert report.verdict is Verdict.UNDETERMINED
-        assert report.exit_code == 2
+        assert report.verdict is Verdict.CLEAN
+        assert report.exit_code == 0
         assert len(report.artifacts) == 1
 
     def test_terminal_output_has_disclaimer(self, tmp_path: Path) -> None:
@@ -36,8 +38,8 @@ class TestModelOnlyCheck:
         j2 = canonical_json(report)
         assert j1 == j2
         data = json.loads(j1)
-        # Without runtime, verdict is undetermined
-        assert data["verdict"] == "undetermined"
+        # Without runtime, verdict is clean (G3)
+        assert data["verdict"] == "clean"
         assert "observations" not in data
 
 
@@ -49,8 +51,8 @@ class TestHashIntegration:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         options = CheckOptions(targets=(path,), full_hash=True, expected_sha256=digest)
         report = run_check(options, command=["cancerbero", "check", str(path)])
-        # Without runtime, verdict is undetermined even with matching hash
-        assert report.verdict is Verdict.UNDETERMINED
+        # Without runtime, verdict is clean even with matching hash (G3).
+        assert report.verdict is Verdict.CLEAN
         verified = [f for f in report.findings if f.id == "cbr.identity.digest_match"]
         assert len(verified) == 1
 
@@ -141,3 +143,88 @@ class TestReportSections:
         assert "coverage" in data
         assert "limitations" in data
         assert len(data["limitations"]) > 0
+
+
+class TestAllArtifactsAnalyzed:
+    """Regression test for C3: every artifact in a directory must be analyzed.
+
+    Previously only the first successfully parsed GGUF was retained; siblings
+    with poisoned templates or SHA mismatches were silently skipped, which
+    hid exactly the threat the project documents (Pillar UI Blindspot).
+    """
+
+    def test_directory_with_malicious_second_artifact_is_not_suitable(self, tmp_path: Path) -> None:
+        write_gguf(tmp_path / "a-base.gguf")
+        # Second artifact embeds an obvious os.system call in its template.
+        write_gguf(
+            tmp_path / "b-instruct.gguf",
+            chat_template="{{ messages[0]['content'] }}{{ os.system('id') }}",
+        )
+        report = run_check(
+            CheckOptions(targets=(tmp_path,)),
+            command=["test"],
+        )
+        assert len(report.artifacts) == 2
+        # The malicious template MUST produce a SUSPICIOUS finding even when
+        # it lives in the second GGUF of the same directory.
+        template_suspicious = [
+            f
+            for f in report.findings
+            if f.check in {"template_poison_detection", "template_enhanced_security"}
+            and f.status.value == "suspicious"
+        ]
+        assert template_suspicious, (
+            "Malicious template in the second artifact was ignored; "
+            f"findings={[(f.id, f.status.value) for f in report.findings]}"
+        )
+        assert report.verdict is Verdict.NOT_SUITABLE
+        assert report.exit_code == 1
+
+    def test_dead_targets_append_is_removed(self) -> None:
+        """The conditional ``targets.append(target) if target not in targets else None``
+        was unreachable dead code; verify it no longer exists in audit.py."""
+        from pathlib import Path as _Path
+
+        src = (_Path(__file__).parent.parent.parent / "src" / "cancerbero" / "audit.py").read_text(
+            encoding="utf-8"
+        )
+        assert "if target not in targets else None" not in src
+
+
+class TestHashBeforeCompanion:
+    """Regression test for M6: manifest SHA-256 coherence receives the
+    freshly computed digest, not None."""
+
+    def test_full_hash_populates_artifact_digest_before_companion_check(
+        self, tmp_path: Path
+    ) -> None:
+        import hashlib
+        import json
+
+        path = write_gguf(tmp_path / "model.gguf")
+        # Manifest declares the same SHA-256 as the model. If the digest
+        # is not propagated to the companion scan, the coherence check
+        # cannot match and the finding will be UNCHECKED/INFO instead of
+        # VERIFIED.
+        digest = hashlib.sha256(path.read_bytes()).hexdigest()
+        (tmp_path / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "artifact": "model.gguf",
+                    "name": "test-model",
+                    "sha256": digest,
+                    "architecture": "llama",
+                }
+            ),
+            encoding="utf-8",
+        )
+        report = run_check(
+            CheckOptions(targets=(path,), full_hash=True),
+            command=["test"],
+        )
+        verified = [
+            f for f in report.findings if "digest_match" in f.id and f.status.value == "verified"
+        ]
+        assert verified, [f.id for f in report.findings]
+        # And the artifact itself must carry the computed digest.
+        assert report.artifacts[0].sha256 == digest

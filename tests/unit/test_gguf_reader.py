@@ -216,3 +216,85 @@ class TestQuantizationTypes:
         path.write_bytes(data + b"\x00" * 18)
         with pytest.raises(GgufTypeError, match="Unknown or unsupported GGML tensor type"):
             read_gguf(path)
+
+
+class TestEssentialKeyReservation:
+    """Regression test for C1: essential metadata must survive large non-essential arrays."""
+
+    def _build_gguf_with_large_array(
+        self, tmp_path: Path, n_entries: int, entry_size: int = 200
+    ) -> Path:
+        """Build a GGUF whose tokenizer.ggml.merges array overflows a tight budget."""
+        import struct
+
+        path = tmp_path / "huge-merges.gguf"
+        with path.open("wb") as f:
+            f.write(b"GGUF")
+            f.write(struct.pack("<I", 3))  # version 3
+            f.write(struct.pack("<Q", 0))  # zero tensors
+            n_kv = 7
+            f.write(struct.pack("<Q", n_kv))
+
+            def write_str(key: str, value: str) -> None:
+                kb = key.encode("utf-8")
+                f.write(struct.pack("<Q", len(kb)))
+                f.write(kb)
+                f.write(struct.pack("<I", 8))  # STRING type
+                vb = value.encode("utf-8")
+                f.write(struct.pack("<Q", len(vb)))
+                f.write(vb)
+
+            # Order matters: essential keys first so they reserve budget.
+            write_str("tokenizer.chat_template", "{% for m in messages %}{{ m['c'] }}{% endfor %}")
+            write_str("general.architecture", "llama")
+            write_str("general.name", "huge")
+            # general.file_type and general.quantization_version are UINT32,
+            # not strings; emit them as raw integers.
+            for key, val in (
+                ("general.file_type", 1),
+                ("general.alignment", 32),
+                ("general.quantization_version", 2),
+            ):
+                kb = key.encode("utf-8")
+                f.write(struct.pack("<Q", len(kb)))
+                f.write(kb)
+                f.write(struct.pack("<I", 4))  # UINT32
+                f.write(struct.pack("<I", val))
+            # tokenizer.ggml.merges: n_entries * entry_size bytes (string array)
+            key_b = b"tokenizer.ggml.merges"
+            f.write(struct.pack("<Q", len(key_b)))
+            f.write(key_b)
+            f.write(struct.pack("<I", 9))  # ARRAY type
+            f.write(struct.pack("<I", 8))  # element type STRING
+            f.write(struct.pack("<Q", n_entries))
+            for i in range(n_entries):
+                s = f"a{i:08d} b{i:08d}".encode()
+                s = s + b"x" * (entry_size - len(s))
+                f.write(struct.pack("<Q", len(s)))
+                f.write(s)
+        return path
+
+    def test_large_bpe_merges_do_not_evict_essentials(self, tmp_path: Path) -> None:
+        # Use a budget smaller than the merges array so the parser is forced
+        # to skip them, then verify the essential keys were still retained.
+        from cancerbero.gguf.reader import read_gguf
+
+        path = self._build_gguf_with_large_array(tmp_path, n_entries=4000, entry_size=200)
+        limits = ParserLimits(max_retained_metadata_bytes=512 * 1024)
+        doc = read_gguf(path, limits=limits)
+        assert "tokenizer.chat_template" in doc.metadata, (
+            "chat_template MUST survive large non-essential arrays"
+        )
+        assert doc.metadata["general.architecture"] == "llama"
+        # The merges array must have been omitted (not silently retained).
+        assert "tokenizer.ggml.merges" not in doc.metadata
+        assert "tokenizer.ggml.merges" in doc.omitted_metadata_keys
+
+    def test_inspector_emits_metadata_omitted_finding(self, tmp_path: Path) -> None:
+        path = self._build_gguf_with_large_array(tmp_path, n_entries=4000, entry_size=200)
+        limits = ParserLimits(max_retained_metadata_bytes=512 * 1024)
+        facts, findings = inspect_gguf(path, limits=limits)
+        omitted = [f for f in findings if f.id == "cbr.gguf.metadata_omitted"]
+        assert len(omitted) == 1, findings
+        assert "tokenizer.ggml.merges" in omitted[0].evidence["omitted_keys"]
+        assert facts.omitted_metadata_keys == ("tokenizer.ggml.merges",)

@@ -76,4 +76,4 @@ class TestJsonStability:
         json_str = canonical_json(report)
         data = json.loads(json_str)
         assert isinstance(data["verdict"], str)
-        assert data["verdict"] in ("suitable", "not_suitable", "undetermined")
+        assert data["verdict"] in ("suitable", "not_suitable", "undetermined", "clean")

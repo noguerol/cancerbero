@@ -19,7 +19,7 @@ ERROR: Could not find a version that satisfies the requirement cancerbero
 **Solutions**:
 1. Install from source:
    ```bash
-   git clone https://github.com/cancerbero-security/cancerbero.git
+   git clone https://github.com/noguerol/cancerbero.git
    cd cancerbero
    pip install -e .
    ```
@@ -389,7 +389,7 @@ fi
 
 If you encounter a bug or unexpected behavior:
 
-1. Check existing issues: [GitHub Issues](https://github.com/cancerbero-security/cancerbero/issues)
+1. Check existing issues: [GitHub Issues](https://github.com/noguerol/cancerbero/issues)
 2. Create new issue with:
    - Cancerbero version (`cancerbero --version`)
    - Python version (`python --version`)

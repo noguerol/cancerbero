@@ -39,8 +39,11 @@ yaml = ["PyYAML>=6.0"]
 cancerbero = "cancerbero.cli:main"
 
 [project.urls]
-Documentation = "https://github.com/cancerbero/cancerbero#readme"
-Issues = "https://github.com/cancerbero/cancerbero/issues"
+Documentation = "https://github.com/noguerol/cancerbero#readme"
+Issues = "https://github.com/noguerol/cancerbero/issues"
+Source = "https://github.com/noguerol/cancerbero"
+Changelog = "https://github.com/noguerol/cancerbero/blob/main/CHANGELOG.md"
+Security = "https://github.com/noguerol/cancerbero/blob/main/SECURITY.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cancerbero"]

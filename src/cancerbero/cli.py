@@ -33,6 +33,9 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="path to cancerbero.yaml configuration file",
     )
+    # ``--no-color``, ``--no-banner``, ``--no-interactive`` are accepted
+    # BEFORE the subcommand only. The subparser registers them as well
+    # so ``cancerbero check --no-color x.gguf`` continues to work.
     parser.add_argument(
         "--no-color",
         action="store_true",
@@ -58,6 +61,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Inspect local GGUF and llama.cpp targets without loading the model.",
     )
     check.add_argument("targets", metavar="TARGET", nargs="+", type=Path)
+    # Output flags (also defined at the top level so they work in any
+    # position; see M5). Duplicating them here lets the subparser accept
+    # ``check --no-interactive x.gguf`` directly.
+    check.add_argument("--no-color", action="store_true", help=argparse.SUPPRESS)
+    check.add_argument("--no-banner", action="store_true", help=argparse.SUPPRESS)
+    check.add_argument("--no-interactive", action="store_true", help=argparse.SUPPRESS)
     check.add_argument("--runtime", type=Path, help="explicit llama.cpp executable or directory")
     check.add_argument(
         "--runtime-version",
@@ -101,11 +110,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--summary-only",
         action="store_true",
         help="show only the verdict summary (useful for batch checks)",
-    )
-    check.add_argument(
-        "--no-interactive",
-        action="store_true",
-        help="disable interactive prompts (for CI/CD)",
     )
 
     # Third-party delegate flags
@@ -200,9 +204,35 @@ def _render_explain(report: object, finding_id: str) -> str:
     return "\n".join(lines)
 
 
+def parse_known_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse argv and OR top-level ``--no-*`` flags into the result.
+
+    ``cancerbero --no-interactive check x.gguf`` and
+    ``cancerbero check --no-interactive x.gguf`` must be equivalent
+    (M5). argparse cannot express that directly because the subparser
+    action overwrites the namespace, so we lift the flag values out of
+    the raw argv before delegating to the parser.
+    """
+    parser = build_parser()
+    raw = list(sys.argv[1:] if argv is None else argv)
+    pre = {"no_color": False, "no_banner": False, "no_interactive": False}
+    for token in raw:
+        if token == "--no-color":
+            pre["no_color"] = True
+        elif token == "--no-banner":
+            pre["no_banner"] = True
+        elif token == "--no-interactive":
+            pre["no_interactive"] = True
+    args = parser.parse_args(raw)
+    for flag, seen in pre.items():
+        if seen:
+            setattr(args, flag, True)
+    return args
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parse_known_args(argv)
     if args.command != "check":
         parser.error(f"unsupported command: {args.command}")
 
@@ -237,8 +267,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         no_banner = getattr(args, "no_banner", False)
         no_interactive = getattr(args, "no_interactive", False)
 
-        # Show banner
-        if not no_banner and not no_color:
+        # Show banner only when explicitly requested AND stderr is a TTY.
+        # Writing the ASCII banner to a non-TTY stderr corrupts CI logs,
+        # SARIF output, and any other consumer that pipes stderr (M5).
+        if not no_banner and not no_color and sys.stderr.isatty():
             sys.stderr.write(render_banner(no_color=no_color))
             sys.stderr.flush()
 

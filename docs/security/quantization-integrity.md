@@ -1,141 +1,72 @@
 # Quantization Integrity Verification
 
-**Version:** 0.1.0  
-**Status:** Implemented
+**Version:** 0.1.0
+**Status:** Re-scoped — see Decision Record
 
 ## Overview
 
-Cancerbero detects tensor misalignment in GGUF files, which can indicate corruption or malicious modification.
+Cancerbero relies on the GGUF reader to enforce tensor invariants. The
+inspector no longer carries a parallel set of "quantization integrity"
+findings, because every condition those findings targeted is rejected
+at parse time by the reader (see `docs/decisions/0003-quantization-integrity-scope.md`).
 
-## Detection Philosophy
+## Why this changed
 
-Cancerbero focuses on high-signal quantization issues:
+The earlier implementation emitted three checks:
 
-- **Tensor misalignment:** Violates GGUF specification, may indicate corruption
-- **Unknown quantization types:** May indicate custom or experimental types
+| Check | Reader behaviour |
+|-------|------------------|
+| `cbr.gguf.unknown_quant_type` | The reader raises `GgufTypeError` for any tensor type id not in `GGML_TYPE_SIZES`. The inspector never sees an unknown type. |
+| `cbr.gguf.tensor_misalignment` | The reader raises `GgufRangeError` for any tensor whose `offset % general.alignment != 0`. The inspector never sees a misaligned tensor. |
+| `cbr.gguf.zero_dimension` | The reader raises `GgufValidationError` for any tensor with a zero-sized dimension. The inspector never sees a zero-dim tensor. |
 
-## Attack Vectors Detected
+Because the parser rejects those conditions before `inspect_gguf` ever
+sees the document, the previous checks could only be exercised by
+constructing `GgufDocument` instances in memory and bypassing the reader.
+That gave a green test suite with zero production coverage.
 
-### 1. Tensor Misalignment (Classification: HIGH)
+Cancerbero now relies entirely on the parser to enforce these
+invariants. If the parser becomes more permissive in the future, the
+inspector will pick up new checks behind a feature flag — see the
+decision record for the gating policy.
 
-**Research:** GGUF Specification, CVE-2026-27940
+## What the parser still guarantees
 
-Tensor offsets must be multiples of the alignment value. Misalignment indicates corruption or malicious modification.
+- Every tensor in the document has a known `GGML_TYPE` entry.
+- Every tensor offset is a positive multiple of `general.alignment`.
+- Every tensor has at least one non-zero dimension.
+- No tensor range overlaps another tensor range or extends past the
+  file end (catches CVE-2026-27940-style precondition bugs).
 
-| Pattern | Description | Severity | Classification |
-|---------|-------------|----------|----------------|
-| `tensor_misalignment` | Tensor offset not aligned | HIGH | HIGH |
+If any of those invariants fails, `inspect_gguf` raises the matching
+typed exception and the artifact fails the `gguf_structure` core check
+with `status=error`. The verdict becomes `UNDETERMINED` and the operator
+sees a clear error rather than a "suspicious" finding.
 
-**Example:**
-A tensor with offset 100 when alignment is 32 bytes indicates misalignment.
+## What we do not detect
 
-**Why it's dangerous:** 
-- Violates the GGUF specification
-- May indicate corruption or malicious modification
-- Is a precondition for parser CVEs (CVE-2026-27940)
-
-**References:**
-- https://www.sentinelone.com/vulnerability-database/cve-2026-27940/
-- GGUF Specification
-
-### 2. Unknown Quantization Types (Classification: LOW)
-
-**Research:** LLMQuA (ACM Web Conference 2026)
-
-Tensors with unknown quantization types may be custom or experimental.
-
-| Pattern | Description | Severity | Classification |
-|---------|-------------|----------|----------------|
-| `unknown_quant_type` | Unknown GGML tensor type | LOW | LOW |
-
-**Example:**
-A tensor using type 99 (not in the standard GGML_TYPE enum) may indicate a custom quantization scheme.
-
-**Why it's concerning:** Unknown quantization types may be experimental or malicious.
-
-**References:**
-- https://dl.acm.org/doi/10.1145/3774904.3792256
-
-## Removed Patterns (Previously Causing False Positives)
-
-The following patterns were removed because they caused false positives:
-
-| Pattern | Reason for Removal |
-|---------|-------------------|
-| `unusual_tensor_size` | Embedding tensors are always much larger than average |
-
-## Usage
-
-### Basic Usage
-
-```bash
-# Check a model for quantization integrity issues
-cancerbero check ./model.gguf
-
-# Check with verbose output
-cancerbero check ./model.gguf --verbose
-
-# Get JSON report
-cancerbero check ./model.gguf --json report.json
-```
-
-### Interpreting Results
-
-When quantization integrity issues are detected, the output includes:
-
-```
-FINDINGS
-  ⚠ cbr.gguf.tensor_misalignment
-    Tensor 'tensor.0' offset (100) is not aligned to 32 bytes.
-    This violates the GGUF specification and may indicate corruption
-    or malicious modification.
-    
-    Status: SUSPICIOUS | Severity: HIGH | Classification: HIGH
-    
-    Action: Do not load this model. The tensor alignment violates
-    the GGUF specification. Re-obtain from a trusted source.
-```
-
-## False Positive Mitigation
-
-### Conservative Patterns
-
-Patterns are designed to minimize false positives:
-
-- **Tensor misalignment:** Only flags when offset is not a multiple of alignment
-- **Unknown types:** Only flags types not in the standard GGML_TYPE enum
-
-### Removed Patterns
-
-Patterns that caused false positives were removed:
-
-- **Unusual tensor sizes:** Embedding tensors are always much larger than average
+Quantization-conditioned backdoors are out of scope for v0.1. They are
+covered by the long-term research track in `cancerbero-lab` (deferred).
+The relevant research is still cited below for traceability.
 
 ## References
 
-### Primary Sources
+### Primary sources
 
-1. **CVE-2026-27940 - Integer Overflow in GGUF Parser**
-   - https://www.sentinelone.com/vulnerability-database/cve-2026-27940/
-   - CVSS 7.8, heap out-of-bounds read and write
-
-2. **LLMQuA - Backdoor Injection During Quantization**
-   - https://dl.acm.org/doi/10.1145/3774904.3792256
-   - ACM Web Conference 2026
-
-3. **GGUF Specification**
-   - https://github.com/ggml-org/llama.cpp/blob/master/gguf-spec.md
-   - Official GGUF format specification
+1. **CVE-2026-27940 — Integer Overflow in GGUF Parser**
+   https://www.sentinelone.com/vulnerability-database/cve-2026-27940/
+2. **GGUF Specification** — https://github.com/ggml-org/llama.cpp/blob/master/gguf-spec.md
+3. **LLMQuA — Backdoor Injection During Quantization**
+   https://dl.acm.org/doi/10.1145/3774904.3792256
 
 ## Limitations
 
-### What This Detection Can Do
+### What this detection can do
 
-- Detect tensor misalignment
-- Detect unknown quantization types
+- Surface parser-rejected GGUF files as `error` findings instead of
+  silently producing a `suspicious` finding.
 
-### What This Detection Cannot Detect
+### What this detection cannot do
 
-- Sophisticated quantization-conditioned backdoors
-- Runtime-only attacks
-- Zero-day exploits
+- Catch weight-level quantization-conditioned backdoors (deferred to a
+  separate research package).

@@ -28,14 +28,43 @@ def _sarif_status(status: Status) -> str:
     return "review"
 
 
-def _finding_to_sarif_result(finding: Finding) -> dict[str, Any]:
-    """Convert a Cancerbero finding to a SARIF result."""
+def _finding_to_sarif_result(
+    finding: Finding, *, artifact_uri: str | None = None
+) -> dict[str, Any]:
+    """Convert a Cancerbero finding to a SARIF result.
+
+    SARIF 2.1.0 requires every result to carry a ``locations`` array (even
+    if the location is logical rather than physical) so consumers like
+    GitHub Code Scanning can associate the result with a file. We map
+    the artifact path to a physical location when we have it; otherwise
+    we emit a logical location anchored at the finding id so the result
+    is never silently dropped.
+
+    Fixes carry a single ``artifactChanges`` entry pointing at the same
+    artifact, with the finding summary as a description.
+    """
+    location: dict[str, Any]
+    if artifact_uri:
+        location = {
+            "physicalLocation": {
+                "artifactLocation": {"uri": artifact_uri},
+            }
+        }
+    else:
+        location = {
+            "logicalLocation": {
+                "name": finding.id,
+                "kind": "result",
+            }
+        }
+
     result: dict[str, Any] = {
         "ruleId": finding.id,
         "level": _sarif_level(finding.severity.value),
         "message": {
             "text": finding.summary or finding.id,
         },
+        "locations": [location],
         "properties": {
             "status": finding.status.value,
             "confidence": finding.confidence.value,
@@ -45,11 +74,15 @@ def _finding_to_sarif_result(finding: Finding) -> dict[str, Any]:
     }
 
     if finding.action:
+        change_artifact: dict[str, Any] = {
+            "artifactLocation": {"uri": artifact_uri}
+            if artifact_uri
+            else {"uri": "cancerbero://finding"},
+        }
         result["fixes"] = [
             {
-                "description": {
-                    "text": finding.action,
-                },
+                "description": {"text": finding.action},
+                "artifactChanges": [change_artifact],
             }
         ]
 
@@ -94,7 +127,7 @@ def render_sarif(report: AuditReport) -> str:
                     "driver": {
                         "name": "Cancerbero",
                         "version": report.cancerbero_version,
-                        "informationUri": "https://github.com/cancerbero-security/cancerbero",
+                        "informationUri": "https://github.com/noguerol/cancerbero",
                         "semanticVersion": report.cancerbero_version,
                         "rules": [],
                     },
@@ -112,6 +145,12 @@ def render_sarif(report: AuditReport) -> str:
     run = sarif["runs"][0]
     driver = run["tool"]["driver"]
 
+    # Index artifacts by path so each result carries a physical location
+    # pointing at the inspected GGUF file (SARIF 2.1.0 requires locations).
+    artifact_uri_by_path: dict[str, str] = {
+        str(artifact.path): str(artifact.path) for artifact in report.artifacts
+    }
+
     # Add rules
     seen_rules: set[str] = set()
     for finding in report.findings:
@@ -119,10 +158,20 @@ def render_sarif(report: AuditReport) -> str:
             driver["rules"].append(_finding_to_sarif_rule(finding))
             seen_rules.add(finding.id)
 
-    # Add results (only suspicious and error findings)
+    # Add results (only suspicious and error findings). Each result carries
+    # a location pointing at the artifact the finding was emitted against,
+    # so GitHub Code Scanning can map it to a file in the repository.
     for finding in report.findings:
         if finding.status in {Status.SUSPICIOUS, Status.ERROR}:
-            result = _finding_to_sarif_result(finding)
+            artifact_uri = None
+            evidence_path = (
+                finding.evidence.get("path") if isinstance(finding.evidence, dict) else None
+            )
+            if isinstance(evidence_path, str) and evidence_path in artifact_uri_by_path:
+                artifact_uri = artifact_uri_by_path[evidence_path]
+            elif report.artifacts:
+                artifact_uri = str(report.artifacts[0].path)
+            result = _finding_to_sarif_result(finding, artifact_uri=artifact_uri)
             # Find rule index
             for i, rule in enumerate(driver["rules"]):
                 if rule["id"] == finding.id:

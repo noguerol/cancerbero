@@ -15,7 +15,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/cancerbero-security/cancerbero.git
+git clone https://github.com/noguerol/cancerbero.git
 cd cancerbero
 
 # Install in development mode
@@ -85,7 +85,7 @@ For contributing to Cancerbero:
 
 ```bash
 # Clone and install with dev dependencies
-git clone https://github.com/cancerbero-security/cancerbero.git
+git clone https://github.com/noguerol/cancerbero.git
 cd cancerbero
 pip install -e ".[dev]"
 

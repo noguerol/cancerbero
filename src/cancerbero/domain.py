@@ -37,6 +37,13 @@ class Verdict(str, Enum):
     SUITABLE = "suitable"
     NOT_SUITABLE = "not_suitable"
     UNDETERMINED = "undetermined"
+    # CLEAN is returned when no suspicious or blocking findings were produced
+    # by the checks we actually performed, but at least one core check
+    # (``runtime_advisory_join``) was missing because no runtime was supplied.
+    # CLEAN is operationally distinct from UNDETERMINED (which signals
+    # incomplete or failed checks) and from SUITABLE (which requires every
+    # core check to have produced positive evidence).
+    CLEAN = "clean"
 
 
 class TargetKind(str, Enum):
@@ -93,6 +100,10 @@ class ArtifactFacts:
     metadata: dict[str, Any] = field(default_factory=dict)
     tensors: list[TensorDescriptor] = field(default_factory=list)
     bytes_read: int = 0
+    # Keys present in the GGUF but omitted from ``metadata`` because the
+    # parser's retained-metadata budget could not fit them. The inspector
+    # emits a finding so coverage gaps are visible.
+    omitted_metadata_keys: tuple[str, ...] = ()
 
     @property
     def has_chat_template(self) -> bool:
@@ -185,7 +196,7 @@ class Finding:
     status: Status
     severity: Severity = Severity.INFO
     confidence: Confidence = Confidence.HIGH
-    classification: Confidence = Confidence.HIGH  # Confidence in malice classification
+    classification: Confidence | None = None  # Confidence in malice classification
     summary: str = ""
     evidence: dict[str, Any] = field(default_factory=dict)
     action: str | None = None
@@ -193,6 +204,13 @@ class Finding:
     mandatory: bool = True
 
     def __post_init__(self) -> None:
+        # M7: ``classification`` defaults to ``confidence`` so the verdict
+        # policy cannot accidentally block a finding whose creator only
+        # declared ``confidence`` (and forgot the second field). Callers
+        # that want the historical behaviour of forcing a HIGH classification
+        # must set it explicitly.
+        if self.classification is None:
+            self.classification = self.confidence
         if self.status is not Status.SUSPICIOUS and self.severity not in {
             Severity.INFO,
             Severity.LOW,

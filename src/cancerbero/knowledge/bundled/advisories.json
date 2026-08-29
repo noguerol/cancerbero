@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "bundle_version": "2026.08.28.1",
+  "bundle_version": "2026.08.28.2",
   "advisories": [
     {
       "id": "CVE-2024-32878",
@@ -218,6 +218,39 @@
       "published": "2026-05-15",
       "reviewed": "2026-08-28",
       "verified_by": "oss-security 2026-05-15 (inferred build)"
+    },
+    {
+      "id": "GHSA-6hc7-9rph-cm99",
+      "title": "CVE-2026-43631: use-after-free in llama-server vocab pointer when --sleep-idle-seconds is enabled",
+      "source": "https://github.com/advisories/GHSA-6hc7-9rph-cm99",
+      "component": "llama.cpp",
+      "version_scheme": "llama_cpp_build",
+      "affected": {
+        "gte": 7492,
+        "lte": 9060
+      },
+      "fixed": {
+        "gte": 9061
+      },
+      "fixed_inferred": true,
+      "artifact_predicates": [
+        {
+          "field": "format",
+          "operator": "present"
+        },
+        {
+          "field": "format",
+          "operator": "equals",
+          "value": "gguf"
+        }
+      ],
+      "severity": "critical",
+      "confidence": "medium",
+      "explanation": "Remote unauthenticated code execution via the vocab pointer in llama-server when --sleep-idle-seconds is enabled. Affects builds b7492 through b9060; reported in early August 2026. The fix build b9061 is the advisory's stated remediation; Cancerbero mirrors it pending an upstream patched tag. This advisory only applies when the runtime is the llama.cpp ``llama-server`` binary with --sleep-idle-seconds enabled; non-server binaries or builds with the feature disabled are not exposed.",
+      "action": "Update llama.cpp to build b9061 or later, or run ``llama-server`` without ``--sleep-idle-seconds`` until the patched build is available.",
+      "published": "2026-08-06",
+      "reviewed": "2026-08-28",
+      "verified_by": "GHSA-6hc7-9rph-cm99 + external review cross-check"
     }
   ]
 }

@@ -328,7 +328,7 @@ def _check_general_recommendations(
             ),
             action="cancerbero check ./model.gguf --runtime ./llama-cli --runtime-version b8146",
             references=[
-                "https://github.com/cancerbero-security/cancerbero",
+                "https://github.com/noguerol/cancerbero",
             ],
         )
     )
@@ -345,7 +345,7 @@ def _check_general_recommendations(
             ),
             action="pip install --upgrade cancerbero",
             references=[
-                "https://github.com/cancerbero-security/cancerbero",
+                "https://github.com/noguerol/cancerbero",
             ],
         )
     )

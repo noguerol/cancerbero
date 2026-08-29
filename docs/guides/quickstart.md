@@ -6,7 +6,7 @@ Get started with Cancerbero in minutes.
 
 ```bash
 # Install from source
-git clone https://github.com/cancerbero-security/cancerbero.git
+git clone https://github.com/noguerol/cancerbero.git
 cd cancerbero
 pip install -e .
 

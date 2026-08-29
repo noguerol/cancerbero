@@ -112,9 +112,11 @@ GGML_TYPE_SIZES: dict[int, tuple[int, int]] = {
     35: (256, 66),  # TQ2_0
     39: (32, 17),  # MXFP4
     40: (64, 36),  # NVFP4
-    41: (128, 18),  # Q1_0
-    42: (64, 18),  # Q2_0
-    # ROCmFP4/ROCmFPX experimental types (AMD ROCm forks)
+    41: (128, 18),  # Q1_0 (ggml PR #1377, mainline)
+    42: (64, 18),  # Q2_0 (ggml PR #1377, mainline)
+    # ROCmFP4/ROCmFPX experimental types (AMD ROCm forks; sizes follow
+    # the AMD ROCm FP4 specification and may differ from upstream ggml).
+    # Documented because the Cancerbero target audience runs ROCm builds.
     100: (32, 18),  # Q4_0_ROCMFP4 (dual UE4M3 scales)
     101: (32, 17),  # Q4_0_ROCMFP4_FAST (single UE4M3 scale)
     102: (32, 26),  # Q6_0_ROCMFPX / TURBO3_0 (fork-dependent)
@@ -209,6 +211,12 @@ class GgufReader:
         self._metadata_end_limit = 0
         self._retained_bytes = 0
         self._array_elements = 0
+        # Bytes already retained from ESSENTIAL metadata values. Combined
+        # with ``_essential_reservation`` this guarantees essential keys
+        # always have 16 MiB of room, even when large non-essential arrays
+        # (BPE merges, vocabulary tokens) consume most of the global budget.
+        self._essential_retained_bytes = 0
+        self._essential_reservation = 16 * 1024 * 1024
 
     def read(self) -> GgufDocument:
         try:
@@ -625,14 +633,29 @@ class GgufReader:
             )
 
     def _reserve_retained(self, size: int, *, essential: bool, context: str) -> bool:
-        if self._retained_bytes + size <= self.limits.max_retained_metadata_bytes:
+        # Essential keys draw from a reserved budget that non-essential
+        # arrays cannot consume. This guarantees tokenizer.chat_template,
+        # general.architecture and friends always survive.
+        if essential:
+            if size > self._essential_reservation:
+                # An essential value larger than the reservation is
+                # structurally broken (e.g. 16 MiB chat template).
+                return False
+            self._essential_retained_bytes += size
             self._retained_bytes += size
             return True
-        if essential:
-            raise GgufLimitError(
-                f"Retained metadata budget {self.limits.max_retained_metadata_bytes} "
-                f"would be exceeded while retaining {context}"
-            )
+        # Non-essential values share what remains of the global budget
+        # AFTER subtracting the still-available essential reservation.
+        # This guarantees non-essential arrays can never evict an essential
+        # key that has not been read yet.
+        available = (
+            self.limits.max_retained_metadata_bytes
+            - self._retained_bytes
+            - (self._essential_reservation - self._essential_retained_bytes)
+        )
+        if size <= available:
+            self._retained_bytes += size
+            return True
         return False
 
     @staticmethod

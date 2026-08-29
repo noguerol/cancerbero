@@ -223,7 +223,7 @@ The SARIF (Static Analysis Results Interchange Format) format integrates with Gi
       "driver": {
         "name": "Cancerbero",
         "version": "0.1.0",
-        "informationUri": "https://github.com/cancerbero-security/cancerbero",
+        "informationUri": "https://github.com/noguerol/cancerbero",
         "rules": [...]
       }
     },

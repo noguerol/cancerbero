@@ -236,9 +236,9 @@ cancerbero check ./model.gguf --json "reports/$(date +%Y%m%d)-model-check.json"
 
 ### Community
 
-- [GitHub Issues](https://github.com/cancerbero-security/cancerbero/issues) — Bug reports
-- [GitHub Discussions](https://github.com/cancerbero-security/cancerbero/discussions) — Questions
-- [Security Advisories](https://github.com/cancerbero-security/cancerbero/security/advisories) — Vulnerabilities
+- [GitHub Issues](https://github.com/noguerol/cancerbero/issues) — Bug reports
+- [GitHub Discussions](https://github.com/noguerol/cancerbero/discussions) — Questions
+- [Security Advisories](https://github.com/noguerol/cancerbero/security/advisories) — Vulnerabilities
 
 ### Support
 

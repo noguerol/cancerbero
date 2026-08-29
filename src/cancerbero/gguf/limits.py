@@ -13,8 +13,12 @@ class ParserLimits:
     stricter budgets. Cancerbero never allocates tensor data.
     """
 
-    max_metadata_bytes: int = 64 * 1024 * 1024
-    max_retained_metadata_bytes: int = 8 * 1024 * 1024
+    max_metadata_bytes: int = 256 * 1024 * 1024
+    # The retained budget must comfortably fit the largest tokenizer arrays
+    # (Llama 3 BPE merges ~280k entries, Qwen 2.5 BPE merges ~151k entries,
+    # DeepSeek/Mistral-Nemo BPE merges ~280k entries) while still bounding
+    # memory. 64 MiB covers every production tokenizer we have inspected.
+    max_retained_metadata_bytes: int = 64 * 1024 * 1024
     max_string_bytes: int = 16 * 1024 * 1024
     max_template_bytes: int = 1 * 1024 * 1024
     max_array_elements: int = 2_000_000

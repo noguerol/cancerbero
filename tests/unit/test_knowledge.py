@@ -38,7 +38,11 @@ class TestEmbeddedBundle:
         valid_components = {"llama.cpp", "llama-cpp-python", "sglang", "ollama"}
         valid_schemes = {"llama_cpp_build", "semver"}
         for rule in bundle.rules:
-            assert rule.id.startswith("CVE-") or rule.id.startswith("GGUF-")
+            assert (
+                rule.id.startswith("CVE-")
+                or rule.id.startswith("GGUF-")
+                or rule.id.startswith("GHSA-")
+            )
             assert rule.source.startswith("https://")
             assert rule.component in valid_components
             assert rule.version_scheme in valid_schemes

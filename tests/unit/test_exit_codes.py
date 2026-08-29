@@ -12,17 +12,19 @@ from tests.fixtures_factory import write_gguf
 class TestExitCodes:
     """Task 78: Verify exit codes for each combination of findings, coverage, and errors.
 
-    With the new verdict policy (v0.5), core checks must produce positive evidence
-    for SUITABLE. Missing core checks → UNDETERMINED.
+    With the verdict policy, ``runtime_advisory_join`` is only a hard
+    requirement when a runtime is in scope. A clean GGUF inspected without
+    ``--runtime`` exits 0 with ``Verdict.CLEAN`` rather than UNDETERMINED,
+    so the operator can distinguish "I didn't run that check" from "the
+    check ran and something went wrong".
     """
 
-    def test_model_without_runtime_is_undetermined(self, tmp_path: Path) -> None:
-        """A model without runtime check → undetermined (core check missing)."""
+    def test_model_without_runtime_exits_clean(self, tmp_path: Path) -> None:
+        """A clean model without runtime check → CLEAN (exit 0)."""
         path = write_gguf(tmp_path / "ok.gguf")
         report = run_check(CheckOptions(targets=(path,)), command=["test"])
-        # Without runtime, the runtime_advisory_join core check is missing
-        assert report.exit_code == 2
-        assert report.verdict is Verdict.UNDETERMINED
+        assert report.exit_code == 0
+        assert report.verdict is Verdict.CLEAN
 
     def test_not_suitable_exits_one(self, tmp_path: Path) -> None:
         """A not-suitable model should exit with code 1."""

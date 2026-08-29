@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from cancerbero import __version__
 from cancerbero.config import inspect_companion_config
 from cancerbero.discovery import classify_target, discover_targets
 from cancerbero.domain import (
@@ -257,10 +258,13 @@ def _analyze_template(artifact: ArtifactFacts) -> list[Finding]:
                 mandatory=False,
             )
         ]
-    from cancerbero.template import analyze_template_poison_risk
+    from cancerbero.template import (
+        analyze_template_poison_risk_from_analysis,
+    )
 
     findings: list[Finding] = []
-    # Standard AST analysis
+    # Standard AST analysis — run ONCE and reuse for both the structural
+    # finding and the poison risk pass (M3).
     analysis = analyze_chat_template(artifact.chat_template)
     findings.extend(analysis.findings)
     # A successfully parsed template provides positive evidence for the
@@ -283,8 +287,9 @@ def _analyze_template(artifact: ArtifactFacts) -> list[Finding]:
                 mandatory=False,
             )
         )
-    # Poisoned template attack detection (Pillar Security, 2025-07)
-    poison_findings = analyze_template_poison_risk(artifact.chat_template)
+    # Poisoned template attack detection (Pillar Security, 2025-07).
+    # Reuses the AST from the structural pass to avoid a second parse.
+    poison_findings = analyze_template_poison_risk_from_analysis(analysis, artifact.chat_template)
     findings.extend(poison_findings)
     return findings
 
@@ -405,7 +410,6 @@ def run_check(
 
     artifact_facts: ArtifactFacts | None = None
     for target in gguf_targets:
-        targets.append(target) if target not in targets else None
         facts, findings = _inspect_artifact(target.path, DEFAULT_LIMITS)
         all_findings.extend(findings)
         if facts is not None:
@@ -431,89 +435,106 @@ def run_check(
         if progress:
             progress.on_runtime_inspected(runtime_path, facts is not None)
 
-    # Template analysis
-    if artifact_facts is not None:
-        all_findings.extend(_analyze_template(artifact_facts))
+    # Template analysis (per-artifact). Previously this only ran against
+    # ``artifact_facts`` (the first successfully parsed GGUF); the other
+    # GGUF files in the same directory were skipped, even when the attacker
+    # hides the malicious template in a quantized variant (Pillar, 2025-07).
+    for artifact in artifacts:
+        all_findings.extend(_analyze_template(artifact))
         if progress:
-            progress.on_template_analyzed(artifact_facts.has_chat_template)
+            progress.on_template_analyzed(artifact.has_chat_template)
+
+    # Hash if requested (per-artifact). Run BEFORE the companion file
+    # inspection so the manifest-coherence check can compare the declared
+    # SHA-256 in any companion manifest against the freshly computed
+    # digest. Previously this block ran after ``inspect_companion_config``
+    # and the manifest comparison always received ``available_digest=None``.
+    if options.full_hash:
+        for index, artifact in enumerate(artifacts):
+            expected = options.expected_sha256 if index == 0 else None
+            finding, hash_obs, digest = _hash_artifact(artifact.path, expected=expected)
+            observations.update(hash_obs)
+            if finding is not None:
+                all_findings.append(finding)
+            # Write the computed digest back so reports, manifest checks, and
+            # subsequent consumers observe provenance from the full hash pass.
+            object.__setattr__(artifact, "sha256", digest)
+            if progress:
+                progress.on_hash_complete(artifact.path, digest)
 
     # Companion file inspection (config.json, Modelfile, manifests, etc.)
-    if artifact_facts is not None:
-        artifact_dir = artifact_facts.path.parent
-        if artifact_dir.is_dir():
-            try:
-                config_result = inspect_companion_config(
-                    artifact_dir,
-                    runtime="llama.cpp",
-                    artifact_name=artifact_facts.name,
-                    available_digest=artifact_facts.sha256,
-                    architecture=artifact_facts.architecture,
-                    model_name=artifact_facts.name,
-                )
-                all_findings.extend(config_result.findings)
+    # Scan once per unique directory rather than per artifact so we do not
+    # emit duplicate findings when several GGUF files share the same parent.
+    inspected_dirs: set[Path] = set()
+    for artifact in artifacts:
+        artifact_dir = artifact.path.parent
+        if artifact_dir in inspected_dirs or not artifact_dir.is_dir():
+            continue
+        inspected_dirs.add(artifact_dir)
+        try:
+            config_result = inspect_companion_config(
+                artifact_dir,
+                runtime="llama.cpp",
+                artifact_name=artifact.name,
+                available_digest=artifact.sha256,
+                architecture=artifact.architecture,
+                model_name=artifact.name,
+            )
+            all_findings.extend(config_result.findings)
 
-                # Hugging Face UI Blindspot detection
-                # (Pillar Security, 2025-07)
-                if len(artifacts) > 1:
-                    from cancerbero.config import detect_template_mismatch_across_files
+            # Hugging Face UI Blindspot detection
+            # (Pillar Security, 2025-07)
+            if len(artifacts) > 1:
+                from cancerbero.config import detect_template_mismatch_across_files
 
-                    mismatch_evidence = detect_template_mismatch_across_files(artifact_dir)
-                    for item in mismatch_evidence:
-                        all_findings.append(
-                            Finding(
-                                id="cbr.config.template_mismatch",
-                                head="loading",
-                                check="template_mismatch_detection",
-                                status=Status.SUSPICIOUS,
-                                severity=Severity.HIGH,
-                                confidence=Confidence.MEDIUM,
-                                summary=item.detail,
-                                evidence=item.value
-                                if isinstance(item.value, dict)
-                                else {"detail": str(item.value)},
-                                action=(
-                                    "Do not load this model without verifying each GGUF file's "
-                                    "template individually. Attackers may hide malicious templates "
-                                    "in quantized variants while showing clean templates on the "
-                                    "repository page."
-                                ),
-                                references=[
-                                    "https://www.pillar.security/blog/llm-backdoors-at-the-inference-level-the-threat-of-poisoned-templates",
-                                ],
-                            )
+                mismatch_evidence = detect_template_mismatch_across_files(artifact_dir)
+                for item in mismatch_evidence:
+                    all_findings.append(
+                        Finding(
+                            id="cbr.config.template_mismatch",
+                            head="loading",
+                            check="template_mismatch_detection",
+                            status=Status.SUSPICIOUS,
+                            severity=Severity.HIGH,
+                            confidence=Confidence.MEDIUM,
+                            classification=Confidence.MEDIUM,
+                            summary=item.detail,
+                            evidence=item.value
+                            if isinstance(item.value, dict)
+                            else {"detail": str(item.value)},
+                            action=(
+                                "Do not load this model without verifying each GGUF file's "
+                                "template individually. Attackers may hide malicious templates "
+                                "in quantized variants while showing clean templates on "
+                                "the repository page."
+                            ),
+                            references=[
+                                "https://www.pillar.security/blog/llm-backdoors-at-the-inference-level-the-threat-of-poisoned-templates",
+                            ],
                         )
-            except (OSError, ValueError) as exc:
-                all_findings.append(
-                    Finding(
-                        id="cbr.config.inspection_error",
-                        head="loading",
-                        check="companion_config",
-                        status=Status.ERROR,
-                        severity=Severity.INFO,
-                        confidence=Confidence.HIGH,
-                        summary=f"Companion file inspection failed: {exc}",
-                        evidence={"error": str(exc)},
                     )
+        except (OSError, ValueError) as exc:
+            all_findings.append(
+                Finding(
+                    id="cbr.config.inspection_error",
+                    head="loading",
+                    check="companion_config",
+                    status=Status.ERROR,
+                    severity=Severity.INFO,
+                    confidence=Confidence.HIGH,
+                    classification=Confidence.HIGH,
+                    summary=f"Companion file inspection failed: {exc}",
+                    evidence={"error": str(exc)},
                 )
+            )
 
-    # Hash if requested
-    if options.full_hash and artifact_facts is not None:
-        finding, hash_obs, digest = _hash_artifact(
-            artifact_facts.path, expected=options.expected_sha256
-        )
-        observations.update(hash_obs)
-        if finding is not None:
-            all_findings.append(finding)
-        # Write the computed digest back so reports, manifest checks, and
-        # subsequent consumers observe provenance from the full hash pass.
-        object.__setattr__(artifact_facts, "sha256", digest)
-        if progress:
-            progress.on_hash_complete(artifact_facts.path, digest)
-
-    # Advisory join
+    # Advisory join (per-artifact). Previously this ran only against
+    # ``artifact_facts``; sibling artifacts never had their versions compared
+    # against the bundled rules.
     if runtime_facts is not None and bundle is not None:
-        advisory_findings = evaluate_advisories(artifact_facts, runtime_facts, bundle.rules)
-        all_findings.extend(advisory_findings)
+        for artifact in artifacts:
+            advisory_findings = evaluate_advisories(artifact, runtime_facts, bundle.rules)
+            all_findings.extend(advisory_findings)
         if progress:
             progress.on_advisory_join(len(bundle.rules))
     elif runtime_facts is not None and bundle is None:
@@ -525,10 +546,37 @@ def run_check(
                 status=Status.UNCHECKED,
                 severity=Severity.INFO,
                 confidence=Confidence.HIGH,
+                classification=Confidence.HIGH,
                 summary=(
                     "Advisory join could not be performed"
                     " because the knowledge bundle is unavailable."
                 ),
+            )
+        )
+
+    # When NO runtime was supplied the advisory join cannot run. Emit a
+    # single UNCHECKED ``runtime_advisory_join`` finding so the policy sees
+    # explicit evidence for the check (and can downgrade the verdict to
+    # ``CLEAN`` rather than ``UNDETERMINED`` per G3).
+    if runtime_facts is None and not runtime_targets and options.runtime is None:
+        all_findings.append(
+            Finding(
+                id="cbr.join.no_runtime",
+                head="loading",
+                check="runtime_advisory_join",
+                status=Status.UNCHECKED,
+                severity=Severity.INFO,
+                confidence=Confidence.HIGH,
+                classification=Confidence.HIGH,
+                summary=(
+                    "Runtime advisory join was skipped because no llama.cpp "
+                    "runtime was supplied. Re-run with --runtime <binary-or-dir> "
+                    "to include runtime advisories in the verdict."
+                ),
+                references=[
+                    "https://github.com/noguerol/cancerbero#runtime-join",
+                ],
+                mandatory=False,
             )
         )
 
@@ -551,9 +599,9 @@ def run_check(
         runtime_config_findings = _analyze_runtime_security(runtime_facts)
         all_findings.extend(runtime_config_findings)
 
-    # Supply chain verification (v0.5 Phase 6)
-    if artifact_facts is not None:
-        supply_chain_findings = _analyze_supply_chain(artifact_facts)
+    # Supply chain verification (v0.5 Phase 6) — per-artifact.
+    for artifact in artifacts:
+        supply_chain_findings = _analyze_supply_chain(artifact)
         all_findings.extend(supply_chain_findings)
 
     # Run optional delegates
@@ -562,7 +610,10 @@ def run_check(
 
     # Evaluate verdict
     findings_tuple = tuple(all_findings)
-    verdict, exit_code = evaluate_verdict(findings_tuple)
+    verdict, exit_code = evaluate_verdict(
+        findings_tuple,
+        runtime_in_scope=runtime_facts is not None or bool(runtime_targets),
+    )
 
     # Generate hardening recommendations
     runtime_version = runtime_facts.version if runtime_facts else None
@@ -582,7 +633,7 @@ def run_check(
 
     return AuditReport(
         schema_version="1.0",
-        cancerbero_version="0.1.0",
+        cancerbero_version=__version__,
         command=command,
         targets=targets if targets else [Target(Path("."), TargetKind.UNKNOWN, "no_targets")],
         artifacts=artifacts,

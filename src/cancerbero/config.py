@@ -89,16 +89,29 @@ class ConfigInspection:
                 status = Status.NOT_APPLICABLE
             elif item.kind.endswith("_match"):
                 status = Status.VERIFIED
+            elif item.severity == "high":
+                # High-severity companion evidence (hardcoded credentials,
+                # remote FROM URL, etc.) is always actionable; surface it as
+                # SUSPICIOUS so the verdict policy can block.
+                status = Status.SUSPICIOUS
             else:
                 status = Status.UNCHECKED
+            severity = {
+                "critical": Severity.CRITICAL,
+                "high": Severity.HIGH,
+                "medium": Severity.MEDIUM,
+                "low": Severity.LOW,
+                "info": Severity.INFO,
+            }.get(item.severity, Severity.INFO)
             findings.append(
                 Finding(
                     id=f"cbr.config.{item.kind}.{index}",
                     head="loading",
                     check="companion_config",
                     status=status,
-                    severity=Severity.LOW if mismatch or item.severity == "low" else Severity.INFO,
+                    severity=severity,
                     confidence=Confidence.HIGH,
+                    classification=Confidence.HIGH,
                     summary=item.detail,
                     evidence={
                         "path": item.path,
@@ -475,10 +488,21 @@ def inspect_companion_config(
 
         if path.name.lower() == "modelfile":
             _inspect_modelfile(text, relative, normalized_runtime, evidence, limits)
+            # Modelfile is plain text but its suffix is empty, so it falls
+            # through the default branch below. Explicitly run the enhanced
+            # companion patterns against the full body (api keys, AWS
+            # credentials, exfiltration URLs, etc.).
+            _inspect_rules_file_backdoor(text, relative, evidence, limits)
         if path.suffix.lower() == ".json":
             parsed_json = _inspect_json(
                 text, relative, normalized_runtime, evidence, errors, limits
             )
+            # Apply the enhanced companion patterns to JSON too. They are
+            # written in JSON-shaped syntax precisely so the structural
+            # decoder can also catch hardcoded credentials, exfiltration URLs,
+            # trust_remote_code, and auto_map. The structural walker only
+            # reports a small subset of those.
+            _inspect_rules_file_backdoor(text, relative, evidence, limits)
             if _is_manifest(path) and parsed_json is not None:
                 declaration = _parse_manifest_declaration(parsed_json, relative, errors)
                 if declaration is not None:
@@ -500,15 +524,11 @@ def inspect_companion_config(
         # Rules File Backdoor detection (Pillar Security, 2025-03)
         # Files already classified as JSON are inspected structurally by
         # _inspect_json; re-scanning their raw text with the regexes would
-        # double-report benign values (H2).
+        # double-report benign values (H2). Other text suffixes plus the
+        # rules-file targets (``.cursorrules``, ``.github/copilot-instructions.md``)
+        # are scanned via the regex set.
         if parsed_json is None and (
-            path.suffix.lower() in _TEXT_SUFFIXES
-            or path.name.lower()
-            in {
-                ".cursorrules",
-                ".github/copilot-instructions.md",
-                "rules.md",
-            }
+            path.suffix.lower() in _TEXT_SUFFIXES or _is_rules_file_target(path)
         ):
             _inspect_rules_file_backdoor(text, relative, evidence, limits)
 
@@ -616,6 +636,22 @@ def _is_companion(path: Path) -> bool:
         or path.suffix.lower()
         in {".md", ".txt", ".yaml", ".yml", ".pem", ".key", ".cfg", ".ini", ".conf"}
         or _is_adapter(path)
+        or _is_rules_file_target(path)
+    )
+
+
+def _is_rules_file_target(path: Path) -> bool:
+    """Match the rules-file backdoor targets explicitly.
+
+    ``.cursorrules`` has no suffix; ``.github/copilot-instructions.md``
+    lives inside a dot-folder so a plain suffix check misses it.
+    """
+    name = path.name.lower()
+    if name in {".cursorrules", "rules.md"}:
+        return True
+    posix = path.as_posix().lower()
+    return posix == ".github/copilot-instructions.md" or posix.endswith(
+        "/.github/copilot-instructions.md"
     )
 
 
@@ -830,6 +866,10 @@ def check_manifest_coherence(
                 ),
                 value={"declared": declaration.sha256, "actual": available_digest},
                 severity="info" if match else "low",
+                # A manifest digest comparison is always directly applicable
+                # to the inspected artifact, regardless of which runtime
+                # consumes the model.
+                runtime_relevance="direct",
             )
         )
     if declaration.architecture and architecture:
