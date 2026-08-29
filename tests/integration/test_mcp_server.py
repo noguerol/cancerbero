@@ -20,6 +20,7 @@ from tests.fixtures_factory import write_gguf
 @pytest.mark.asyncio
 async def test_mcp_stdio_full_protocol():
     """Spawn the MCP server, list tools, call one, receive a JSON string."""
+    pytest.importorskip("mcp")
     from mcp.client.session import ClientSession
     from mcp.client.stdio import StdioServerParameters, stdio_client
 

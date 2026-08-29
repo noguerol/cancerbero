@@ -38,14 +38,14 @@ dependencies = ["Jinja2>=3.1.4,<4"]
 [project.optional-dependencies]
 dev = [
   "build>=1.2",
-  "mcp>=1.0",
+  "mcp>=1.0,<2",
   "PyYAML>=6.0",
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
   "pytest-cov>=5.0",
   "ruff>=0.6",
 ]
-mcp = ["mcp>=1.0"]
+mcp = ["mcp>=1.0,<2"]
 yaml = ["PyYAML>=6.0"]
 
 [project.scripts]

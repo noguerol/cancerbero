@@ -308,6 +308,7 @@ class TestMcpServerHelpers:
         assert '"name": "cancerbero_inspect"' in out
 
     def test_mcp_server_builds(self) -> None:
+        pytest.importorskip("mcp")
         from cancerbero.mcp_server import _build_server
 
         mcp = _build_server()

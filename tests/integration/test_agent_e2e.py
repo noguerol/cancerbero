@@ -22,6 +22,7 @@ from tests.fixtures_factory import write_gguf
 @pytest.mark.asyncio
 async def test_every_public_tool_round_trip() -> None:
     """Spawn the MCP server and call every public tool."""
+    pytest.importorskip("mcp")
     from mcp.client.session import ClientSession
     from mcp.client.stdio import StdioServerParameters, stdio_client
 
