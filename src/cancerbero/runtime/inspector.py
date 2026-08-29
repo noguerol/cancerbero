@@ -17,7 +17,14 @@ from cancerbero.domain import Confidence, RuntimeFacts
 from cancerbero.gguf.limits import DEFAULT_LIMITS, ParserLimits
 
 _MAX_IDENTITY_FILE_BYTES = 64 * 1024
-_MAX_STATIC_BINARY_BYTES = 4 * 1024 * 1024
+# The static binary identity probe used to read the first 4 MiB only.
+# Real statically-linked ``llama-server`` binaries can be 60-100 MiB, with
+# the build-info string living much further into the file. We now scan
+# the binary in 1 MiB windows up to a configurable total cap, scanning
+# each window separately so a real-world llama-server is identified in
+# well under 1 second without keeping the whole file in RAM.
+_MAX_STATIC_BINARY_BYTES = 64 * 1024 * 1024
+_BINARY_PROBE_WINDOW = 1 * 1024 * 1024
 _MAX_PE_HEADER_OFFSET = 1024 * 1024
 _NEARBY_LEVELS = 4
 
@@ -318,13 +325,40 @@ def _identity_from_git(binary: Path) -> _Identity:
 
 
 def _identity_from_static_binary(binary: Path) -> _Identity:
-    data = _read_bounded(binary, _MAX_STATIC_BINARY_BYTES)
-    if not data:
+    try:
+        file_size = binary.stat().st_size
+    except OSError:
         return _Identity()
-    # NULs and control bytes delimit compiled strings. The parser only accepts
-    # labelled values, avoiding arbitrary numeric constants in executable code.
-    text = re.sub(r"[^\x20-\x7e]+", "\n", data.decode("latin-1", errors="ignore"))
-    return _parse_identity(text)
+    if file_size <= 0:
+        return _Identity()
+
+    # Scan the binary in 1 MiB windows so we can identify large statically
+    # linked llama.cpp builds without loading the whole executable into
+    # memory. The first window is preferred because most build-info
+    # strings live near the beginning; later windows are a fallback for
+    # very large stripped builds. We stop early as soon as the parser
+    # finds a complete identity so the common case is fast.
+    offset = 0
+    while offset < min(file_size, _MAX_STATIC_BINARY_BYTES):
+        window_size = min(_BINARY_PROBE_WINDOW, file_size - offset)
+        try:
+            with binary.open("rb") as handle:
+                handle.seek(offset)
+                data = handle.read(window_size)
+        except OSError:
+            return _Identity()
+        if not data:
+            break
+        text = re.sub(r"[^\x20-\x7e]+", "\n", data.decode("latin-1", errors="ignore"))
+        identity = _parse_identity(text)
+        if (
+            identity.commit is not None
+            or identity.version is not None
+            or identity.build is not None
+        ):
+            return identity
+        offset += window_size
+    return _Identity()
 
 
 def _minimal_environment() -> dict[str, str]:

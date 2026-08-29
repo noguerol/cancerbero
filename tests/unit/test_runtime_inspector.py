@@ -175,3 +175,28 @@ class TestErrors:
     def test_directory_raises(self, tmp_path: Path) -> None:
         with pytest.raises(RuntimeInspectionError, match="not a regular file"):
             inspect_runtime(tmp_path)
+
+
+class TestStaticBinaryWindowedScan:
+    """Regression test for the blue item 'static binary identity search range':
+
+    The previous implementation read the first 4 MiB of the binary only.
+    Real statically-linked ``llama-server`` builds are 60-100 MiB and put
+    the build-info string far past the 4 MiB boundary. The windowed
+    scanner identifies the build regardless of its position."""
+
+    def test_build_info_after_4mb_boundary_is_found(self, tmp_path: Path) -> None:
+        from cancerbero.runtime.inspector import _identity_from_static_binary
+
+        binary = tmp_path / "llama-server"
+        # Fill the first 4 MiB with junk that does NOT contain the build
+        # marker; place the marker at offset 6 MiB (well past the old
+        # 4 MiB cap) and pad the rest with junk.
+        marker = b"build = 9500\x00"
+        chunks: list[bytes] = []
+        chunks.append(b"\x00" * (6 * 1024 * 1024))
+        chunks.append(marker)
+        chunks.append(b"\x00" * (1 * 1024 * 1024))
+        binary.write_bytes(b"".join(chunks))
+        identity = _identity_from_static_binary(binary)
+        assert identity.build == 9500

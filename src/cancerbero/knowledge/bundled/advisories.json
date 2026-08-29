@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "bundle_version": "2026.08.28.2",
+  "bundle_version": "2026.08.28.3",
   "advisories": [
     {
       "id": "CVE-2024-32878",
@@ -251,6 +251,38 @@
       "published": "2026-08-06",
       "reviewed": "2026-08-28",
       "verified_by": "GHSA-6hc7-9rph-cm99 + external review cross-check"
+    },
+    {
+      "id": "GHSA-vgg9-87g3-85w8",
+      "title": "CVE-2025-53630: integer overflow in gguf_init_from_file_impl leads to heap out-of-bounds read/write",
+      "source": "https://github.com/ggml-org/llama.cpp/security/advisories/GHSA-vgg9-87g3-85w8",
+      "component": "llama.cpp",
+      "version_scheme": "llama_cpp_build",
+      "affected": {
+        "lt": 5700
+      },
+      "fixed": {
+        "gte": 5701
+      },
+      "fixed_inferred": false,
+      "artifact_predicates": [
+        {
+          "field": "format",
+          "operator": "present"
+        },
+        {
+          "field": "format",
+          "operator": "equals",
+          "value": "gguf"
+        }
+      ],
+      "severity": "high",
+      "confidence": "high",
+      "explanation": "Integer overflow in ggml/src/gguf.cpp (gguf_init_from_file_impl) allows heap out-of-bounds read/write when parsing an untrusted GGUF file. Fixed by commit 26a48ad699d50b6268900062661bd22f3e792579, which landed in build b5701. The advisory targets GGUF loading paths so it applies whenever the runtime is llama.cpp regardless of the feature flag.",
+      "action": "Update llama.cpp to build b5701 or later. Reject GGUF files of unknown origin until the patched build is in use.",
+      "published": "2025-07-10",
+      "reviewed": "2026-08-28",
+      "verified_by": "GHSA-vgg9-87g3-85w8 (Tenable CVE-2025-53630 mirror)"
     }
   ]
 }
