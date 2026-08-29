@@ -2,6 +2,22 @@
 
 All notable changes to Cancerbero are documented here.
 
+## 0.1.2 — 2026-08-29
+
+### Fixed
+
+- **False positive on benign Jinja2 globals.** The 0.1.1 SSTI fix flagged
+  every call to `namespace(...)`, `cycler(...)`, `lipsum(...)`,
+  `joiner(...)` as suspicious because their `__init__.__globals__` is a
+  known SSTI gateway. These globals are standard Jinja2 idioms used by
+  every modern chat template (Qwen3 tool-call state tracking,
+  llama.cpp's own templates, Gemma, DeepSeek); plain invocation is
+  benign. Detection now requires a dunder attribute somewhere in the
+  call chain, matching only the actual SSTI gadgets
+  (`namespace.__init__.__globals__.os.popen(...)` etc.). 5 regression
+  tests added covering the false-positive patterns and 1 covering the
+  legitimate SSTI path that must still fire.
+
 ## 0.1.1 — 2026-08-29
 
 ### Security hardening (external audit remediation)

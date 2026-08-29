@@ -335,12 +335,18 @@ def _ast_dangerous_functions(ast: nodes.Template) -> list[TemplateEvidence]:
     This implementation:
 
     * Walks the entire ``Getattr``/``Getitem`` chain of any ``Call`` node and
-      flags the call if ANY name in the chain is a dunder (``__class__``,
-      ``__mro__``, ``__subclasses__``, ``__globals__``, ...) or the call's
-      root is a Jinja global with a known gadget (``cycler``, ``joiner``,
-      ``namespace``, ``lipsum``).
-    * Flags ``attr(x)`` filter usage whose argument is a dunder name — the
-      filter is the SSTI-builder's preferred way to evade naïve AST scans.
+      flags the call when ANY segment is a dunder attribute
+      (``__class__``, ``__mro__``, ``__subclasses__``, ``__globals__``,
+      ``__init__``, ...).
+    * Flags a Call whose chain starts at a Jinja2 global with a known SSTI
+      gadget (``cycler``, ``joiner``, ``lipsum``) ONLY when the call's
+      chain ALSO contains a dunder attribute. Plain invocation of
+      ``namespace(...)`` / ``cycler(...)`` / ``lipsum(...)`` / ``joiner(...)``
+      is a standard, benign Jinja2 idiom used by every modern chat
+      template (Qwen3, Gemma, DeepSeek, llama.cpp's own templates) and
+      must not be flagged.
+    * Flags ``|attr('__class__')`` and similar filter usage whose argument
+      is a dunder name — the SSTI-builder's preferred evasion.
     """
     evidence: list[TemplateEvidence] = []
 
@@ -358,25 +364,10 @@ def _ast_dangerous_functions(ast: nodes.Template) -> list[TemplateEvidence]:
         chain = _walk_attr_chain(node.node)
         attrs = {attr for _, attr in chain}
         root_name = chain[-1][1] if chain else None
-        # The chain root is a Jinja global with a known gadget (``cycler``,
-        # ``lipsum``, ``namespace``, ``joiner``) — flag the call regardless
-        # of what is invoked on it.
-        if root_name in _JINJA_GLOBALS:
-            emit(
-                getattr(node, "lineno", None),
-                f"Template invokes function on Jinja global '{root_name}', "
-                "whose __init__.__globals__ is the standard SSTI gateway.",
-            )
-            continue
-        # The chain (or its root) names a known dangerous function (``os``,
-        # ``subprocess``, ``__import__``, ``eval``, ...).
-        if root_name in _DANGEROUS_FUNCTIONS:
-            emit(
-                getattr(node, "lineno", None),
-                f"Template calls dangerous function '{root_name}'.",
-            )
-            continue
-        # Any segment of the chain is a dunder — the universal SSTI builder.
+
+        # Any dunder attribute anywhere in the chain is the universal SSTI
+        # marker (``__class__``, ``__mro__``, ``__subclasses__``,
+        # ``__globals__``, ``__init__``, ``__builtins__``, ...).
         if attrs & _DUNDER_ATTR_NAMES:
             emit(
                 getattr(node, "lineno", None),
@@ -385,6 +376,29 @@ def _ast_dangerous_functions(ast: nodes.Template) -> list[TemplateEvidence]:
                 "this is the standard Jinja2 SSTI gadget pattern.",
             )
             continue
+
+        # The chain root is a Jinja global with a known SSTI gadget
+        # (``cycler``, ``lipsum``, ``joiner``). When a dunder is present
+        # anywhere in the chain we already handled it above; here we only
+        # flag when the chain ALSO touches a dunder via the *inner*
+        # attribute, i.e. ``cycler.__init__`` would have matched above,
+        # but plain ``cycler(...)`` / ``lipsum(...)`` / ``joiner(...)``
+        # invocations are benign and widely used (e.g. ``namespace()``
+        # is used by Qwen3 tool-call templates for loop state tracking).
+        if root_name in _JINJA_GLOBALS and attrs & _DUNDER_ATTR_NAMES:
+            # Covered by the dunder check above; this branch is here for
+            # future flagging that excludes specific safe dunders.
+            continue
+
+        # The chain (or its root) names a known dangerous function (``os``,
+        # ``subprocess``, ``__import__``, ``eval``, ...).
+        if root_name in _DANGEROUS_FUNCTIONS:
+            emit(
+                getattr(node, "lineno", None),
+                f"Template calls dangerous function '{root_name}'.",
+            )
+            continue
+
         # Match fully-qualified dangerous calls like ``os.system`` by walking
         # the chain root-first. ``_walk_attr_chain`` returns the chain in
         # evaluation order (outermost first), so the root Name ``os`` is

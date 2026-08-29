@@ -187,3 +187,47 @@ class TestUniqueFindingIDs:
         ids = [f.id for f in findings if "dangerous_function" in f.id]
         assert len(ids) == 3, ids
         assert len(set(ids)) == len(ids), f"Duplicate finding ids: {ids}"
+
+
+class TestJinjaGlobalsFalsePositiveGuard:
+    """Regression: ``namespace()`` and other Jinja2 globals are benign when
+    invoked plainly. They MUST NOT be flagged as suspicious just because
+    their ``__init__.__globals__`` is a known SSTI gateway."""
+
+    @pytest.mark.parametrize(
+        "template,description",
+        [
+            # Standard ``namespace()`` invocation; used by llama.cpp,
+            # Qwen3, Gemma, DeepSeek, etc. for loop state tracking.
+            ("{% set ns = namespace() %}", "plain namespace()"),
+            (
+                "{% set ns = namespace(is_first_tool_call=True) %}",
+                "namespace() with kwargs",
+            ),
+            ("{% for m in messages %}{{ namespace(trim_blocks=True) }}{% endfor %}", "namespace() inside for"),
+            # Plain cycler / lipsum / joiner invocations are also benign.
+            ("{{ cycler('a', 'b')|join(',') }}", "plain cycler()"),
+            ("{{ lipsum('hello') }}", "plain lipsum()"),
+        ],
+    )
+    def test_plain_jinja_global_invocation_is_not_suspicious(
+        self, template: str, description: str
+    ) -> None:
+        findings = analyze_template_poison_risk(template)
+        suspicious = [f for f in findings if f.status.value == "suspicious"]
+        assert suspicious == [], (
+            f"Plain Jinja global invocation flagged as suspicious "
+            f"({description}): {[f.id for f in suspicious]}"
+        )
+
+    def test_namespace_with_dunder_chain_still_suspicious(self) -> None:
+        """The legitimate path MUST still catch real SSTI via namespace."""
+        template = "{{ namespace.__init__.__globals__.os.popen('id').read() }}"
+        findings = analyze_template_poison_risk(template)
+        suspicious = [
+            f for f in findings if f.status.value == "suspicious" and "dangerous" in f.id
+        ]
+        assert suspicious, (
+            "Real SSTI via namespace.__init__.__globals__ was missed: "
+            f"{[f.id for f in findings]}"
+        )
