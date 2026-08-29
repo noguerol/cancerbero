@@ -2,6 +2,58 @@
 
 All notable changes to Cancerbero are documented here.
 
+## 0.2.0 — 2026-08-29
+
+### Added — agentic surface
+
+- **`cancerbero mcp` Model Context Protocol server.** Speaks MCP over
+  stdio (no TCP port by default). Exposes seven tools to Claude Code,
+  OpenAI Codex CLI, Cursor, and any MCP-aware client:
+  `cancerbero_inspect`, `cancerbero_artifact_facts`,
+  `cancerbero_check_template`, `cancerbero_companion_scan`,
+  `cancerbero_list_advisories`, `cancerbero_hash`,
+  `cancerbero_self_test`. The catalogue is the single source of
+  truth in `cancerbero.agentic.schemas.TOOL_DEFINITIONS`.
+- **`cancerbero agentic-manifest` subcommand.** Prints the tool
+  catalogue in Anthropic `tools` format for non-MCP clients.
+- **JSON-schema tool catalogue** in
+  `cancerbero.agentic.schemas`. Renders as OpenAI
+  (`tool_definitions_as_openai_tools`) or Anthropic
+  (`tool_definitions_as_anthropic_tools`) `tools` arrays.
+- **Python dispatch** in `cancerbero.agentic.dispatch`. `safe_invoke_tool(name, args)`
+  routes every agent tool call to the right Cancerbero subsystem
+  and converts every exception into a structured `{"error": ...}`
+  response so the agent can branch on it.
+- **`AGENTS.md`** at the repository root. The canonical contract for
+  AI agents: when to use Cancerbero, how to wire it, the seven
+  tools, the verdict policy, the failure modes, and the security
+  model. Read by Claude Code, OpenAI Codex CLI, Cursor, and 30+
+  other agentic clients.
+- **Examples directory.** `agent-claude-code.json`,
+  `agent-cursor.json`, `agent-codex.toml`,
+  `agent-openai-function-calling.py`,
+  `agent-anthropic-function-calling.py`, `agent-mcp-client.py` —
+  copy-paste-ready wiring for every supported agent runtime.
+- **34 new tests** in `tests/unit/test_agentic.py` and
+  `tests/integration/test_mcp_server.py` covering the catalogue,
+  the dispatcher, the manifest renderer, the CLI helpers, and a
+  real end-to-end MCP stdio round-trip.
+
+### Changed
+
+- **Exit code table** now distinguishes `suitable` (exit 0) from
+  `clean` (also exit 0) so CI scripts and agents can branch on the
+  verdict explicitly.
+- **README, docs index, agentic-tools reference, AGENTS.md** all
+  describe the new agentic surface and point at the same example
+  recipes.
+- **Keywords** in `pyproject.toml` extended with `agentic`, `mcp`,
+  `llm-security`, `model-context-protocol`.
+- **New optional dependency** `[mcp]` (the official Model Context
+  Protocol SDK). `[dev]` now also pulls `pytest-asyncio` and `mcp`
+  for the integration tests.
+- Bundle updated to `2026.08.28.3`; `advisory_count` is now 9.
+
 ## 0.1.3 — 2026-08-29
 
 ### Fixed

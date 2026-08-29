@@ -1,0 +1,6 @@
+# OpenAI Codex CLI configuration
+# Place at ~/.codex/config.toml
+
+[mcp_servers.cancerbero]
+command = "cancerbero"
+args = ["mcp"]

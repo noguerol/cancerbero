@@ -10,6 +10,37 @@ Cancerbero does **not** claim that a model is safe, prove the absence of backdoo
 
 > **Status:** `0.1.0` alpha. Supports GGUF and llama.cpp only.
 
+## For AI agents
+
+Cancerbero ships with a first-class **agentic surface**: a
+[Model Context Protocol](https://modelcontextprotocol.io) server, a
+JSON-schema tool catalogue, and a comprehensive
+[`AGENTS.md`](./AGENTS.md) guide. Claude Code, OpenAI Codex CLI,
+Cursor, and any MCP-aware client can drive Cancerbero as native
+tool calls; the catalogue is the single source of truth shared with
+non-MCP clients.
+
+```json
+{
+  "mcpServers": {
+    "cancerbero": {
+      "command": "cancerbero",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+The agent then has access to seven tools — `cancerbero_inspect`,
+`cancerbero_artifact_facts`, `cancerbero_check_template`,
+`cancerbero_companion_scan`, `cancerbero_list_advisories`,
+`cancerbero_hash`, `cancerbero_self_test` — each with stable
+parameters and machine-readable JSON output. See
+[`AGENTS.md`](./AGENTS.md) and [`docs/guides/agentic.md`](./docs/guides/agentic.md)
+for the full contract.
+
+## Why Cancerbero?
+
 ## Why Cancerbero?
 
 A model file and its runtime form one attack surface. A structurally valid artifact can still expose a vulnerable parser or template path in a particular runtime build. Cancerbero's core operation is a local join:
@@ -177,12 +208,13 @@ Compatible with GitHub Code Scanning and other static analysis tools. Maps findi
 
 ## Exit codes
 
-| Code | Meaning |
-|---:|---|
-| `0` | Suitable — no blocking conditions found |
-| `1` | Not suitable — a confirmed risk condition was found |
-| `2` | Undetermined — required evidence was missing |
-| `3` | Error — invalid input or operational failure |
+| Code | Verdict | Meaning |
+|---:|---|---|
+| `0` | `suitable` | Every core check (including the runtime advisory join) produced positive evidence |
+| `0` | `clean` | No suspicious findings on the checks performed (typically: no `--runtime` supplied) |
+| `1` | `not_suitable` | A confirmed risk condition was found |
+| `2` | `undetermined` | A check could not complete or a non-runtime core check was missing |
+| `3` | (error) | Invalid input or operational failure |
 
 ## Options
 

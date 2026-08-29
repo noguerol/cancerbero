@@ -7,6 +7,8 @@ Step-by-step guides for using Cancerbero effectively.
 - [Installation Guide](installation.md) — Get Cancerbero running in minutes
 - [Quick Start](quickstart.md) — Your first model inspection
 - [Configuration](configuration.md) — Customize Cancerbero for your workflow
+- [Cancerbero for AI agents](agentic.md) — MCP server, JSON-schema tools, recipes
+- [`AGENTS.md`](../../AGENTS.md) — The canonical agent contract
 
 ## Core Guides
 
@@ -29,6 +31,7 @@ Step-by-step guides for using Cancerbero effectively.
 - [Finding Model](../reference/findings.md) — Status, severity, confidence explained
 - [Exit Codes](../reference/exit-codes.md) — Exit code policy
 - [Configuration File](../reference/config-file.md) — cancerbero.yaml reference
+- [Agentic Tool Catalogue](../reference/agentic-tools.md) — MCP / JSON-schema reference
 
 ## Security Guides
 
@@ -105,12 +108,13 @@ Cancerbero requires positive evidence from core checks for SUITABLE verdict:
 
 ### Exit Codes
 
-| Code | Meaning | Action |
-|------|---------|--------|
-| `0` | SUITABLE | Continue |
-| `1` | NOT SUITABLE | Block |
-| `2` | UNDETERMINED | Review |
-| `3` | ERROR | Fail |
+| Code | Verdict | Meaning | Action |
+|---|---|---|---|
+| `0` | `suitable` | Every core check (including the runtime advisory join) produced positive evidence | Continue |
+| `0` | `clean` | No suspicious findings on the checks performed | Continue |
+| `1` | `not_suitable` | A confirmed risk condition was found | Block |
+| `2` | `undetermined` | A check could not complete or a non-runtime core check was missing | Review |
+| `3` | (error) | Invalid input or operational failure | Fail |
 
 ### Output Formats
 

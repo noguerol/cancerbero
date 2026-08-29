@@ -67,7 +67,7 @@ Cancerbero uses a **severity × classification matrix** to determine verdicts:
 
 ## Advisory Bundle
 
-The advisory bundle contains 7 advisories:
+The advisory bundle contains 9 advisories:
 
 | Advisory | Component | Severity | Source |
 |----------|-----------|----------|--------|
@@ -78,6 +78,8 @@ The advisory bundle contains 7 advisories:
 | CVE-2026-5760 | SGLang | HIGH | CVE-2026-5760 |
 | CVE-2026-7482 | Ollama | CRITICAL | GHSA-x8qc-fggm-mpqg |
 | GGUF-2026-05-001 | llama.cpp | HIGH | oss-security 2026-05-15 |
+| GHSA-6hc7-9rph-cm99 | llama.cpp | CRITICAL | CVE-2026-43631 (RCE in llama-server --sleep-idle-seconds) |
+| GHSA-vgg9-87g3-85w8 | llama.cpp | HIGH | CVE-2025-53630 (GGUF parser integer overflow) |
 
 Each advisory includes:
 - `verified_by` — Source verification
@@ -155,21 +157,46 @@ The knowledge bundle contains:
 
 ## API Reference
 
+### Agentic tool catalogue
+
+Cancerbero exposes seven stable tool calls for AI agents via the
+Model Context Protocol and as JSON-schema definitions. See
+[`agentic-tools.md`](agentic-tools.md) for the full reference
+(per-tool parameters, output shapes, finding ID prefixes). The
+canonical agent contract lives in [`AGENTS.md`](../../AGENTS.md).
+
 ### Python API
 
 Cancerbero can be used as a Python library:
 
 ```python
 from cancerbero.audit import CheckOptions, run_check
+from cancerbero.agentic.dispatch import safe_invoke_tool
 from cancerbero.report import render_terminal, canonical_json
 
-# Run check
-options = CheckOptions(targets=(Path("./model.gguf"),))
+# Option 1: programmatic check
+options = CheckOptions(
+    targets=(Path("./model.gguf"),),
+    runtime=Path("./llama-cli"),
+    runtime_version="b8146",
+)
 report = run_check(options, command=["cancerbero", "check", "./model.gguf"])
-
-# Render output
 terminal = render_terminal(report)
 json_output = canonical_json(report)
+
+# Option 2: agentic tool (the same code path as the MCP server)
+result = safe_invoke_tool(
+    "cancerbero_inspect",
+    {
+        "targets": ["./model.gguf"],
+        "runtime": "./llama-cli",
+        "runtime_version": "b8146",
+    },
+)
+if result["verdict"] == "not_suitable":
+    for f in result["findings"]:
+        if f["status"] == "suspicious":
+            print(f["id"], f["summary"])
 ```
 
 ### Key Classes
@@ -181,6 +208,8 @@ json_output = canonical_json(report)
 | `Finding` | `cancerbero.domain` | Individual finding |
 | `ArtifactFacts` | `cancerbero.domain` | Artifact properties |
 | `RuntimeFacts` | `cancerbero.domain` | Runtime properties |
+| `ToolDefinition` | `cancerbero.agentic.schemas` | One agent-callable tool |
+| `KnowledgeBundle` | `cancerbero.knowledge.schema` | Validated advisory bundle |
 
 ### Key Functions
 
@@ -193,6 +222,9 @@ json_output = canonical_json(report)
 | `render_sarif()` | `cancerbero.report` | Generate SARIF |
 | `inspect_gguf()` | `cancerbero.gguf.inspector` | Inspect GGUF file |
 | `inspect_runtime()` | `cancerbero.runtime.inspector` | Inspect runtime |
+| `safe_invoke_tool()` | `cancerbero.agentic.dispatch` | Dispatch an agent tool call |
+| `tool_definitions_as_anthropic_tools()` | `cancerbero.agentic.schemas` | Render Anthropic tool catalogue |
+| `tool_definitions_as_openai_tools()` | `cancerbero.agentic.schemas` | Render OpenAI tool catalogue |
 
 ## Error Reference
 

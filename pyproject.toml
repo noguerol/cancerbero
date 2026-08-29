@@ -4,13 +4,23 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cancerbero"
-version = "0.1.0"
+version = "0.2.0"
 description = "Local pre-load inspection for GGUF artifacts and llama.cpp runtimes"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [{name = "Cancerbero contributors"}]
-keywords = ["gguf", "llama.cpp", "model-security", "supply-chain", "security"]
+keywords = [
+  "agentic",
+  "gguf",
+  "llama-cpp",
+  "llm-security",
+  "mcp",
+  "model-context-protocol",
+  "model-security",
+  "security",
+  "supply-chain",
+]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -28,11 +38,14 @@ dependencies = ["Jinja2>=3.1.4,<4"]
 [project.optional-dependencies]
 dev = [
   "build>=1.2",
+  "mcp>=1.0",
   "PyYAML>=6.0",
   "pytest>=8.0",
+  "pytest-asyncio>=0.23",
   "pytest-cov>=5.0",
   "ruff>=0.6",
 ]
+mcp = ["mcp>=1.0"]
 yaml = ["PyYAML>=6.0"]
 
 [project.scripts]
@@ -44,6 +57,11 @@ Issues = "https://github.com/noguerol/cancerbero/issues"
 Source = "https://github.com/noguerol/cancerbero"
 Changelog = "https://github.com/noguerol/cancerbero/blob/main/CHANGELOG.md"
 Security = "https://github.com/noguerol/cancerbero/blob/main/SECURITY.md"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/cancerbero"]
@@ -61,7 +79,6 @@ include = [
   "pyproject.toml",
 ]
 
-[tool.pytest.ini_options]
 addopts = "-ra --strict-markers"
 testpaths = ["tests"]
 

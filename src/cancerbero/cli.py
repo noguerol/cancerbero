@@ -143,6 +143,43 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="run all available delegates",
     )
+
+    # ``cancerbero mcp`` -- start the Model Context Protocol server.
+    # The MCP server is the recommended way for agents (Claude Code,
+    # OpenAI Codex CLI, Cursor, ...) to drive Cancerbero. The same
+    # tools are also available as plain JSON-schema for non-MCP
+    # clients via ``cancerbero agentic-manifest``.
+    mcp_cmd = subparsers.add_parser(
+        "mcp",
+        help="start a Model Context Protocol server (stdio)",
+        description=(
+            "Expose Cancerbero's agent-callable tools over MCP. Use"
+            " this from Claude Code, OpenAI Codex CLI, Cursor, or any"
+            " other MCP-aware client."
+        ),
+    )
+    mcp_cmd.add_argument(
+        "--invoke",
+        metavar="TOOL",
+        help="run a single tool call instead of starting the server",
+    )
+    mcp_cmd.add_argument(
+        "--args",
+        default="{}",
+        help="JSON arguments for --invoke (default: empty object)",
+    )
+
+    # ``cancerbero agentic-manifest`` -- print the JSON-schema tool
+    # catalogue for non-MCP clients.
+    subparsers.add_parser(
+        "agentic-manifest",
+        help="print the tool catalogue in Anthropic format",
+        description=(
+            "Print the JSON-schema tool catalogue so non-MCP agents can"
+            " wire Cancerbero as native tool calls."
+        ),
+    )
+
     return parser
 
 
@@ -233,6 +270,22 @@ def parse_known_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parse_known_args(argv)
+
+    if args.command == "mcp":
+        from cancerbero.mcp_server import main as mcp_main
+
+        # The MCP subcommand accepts its own argv shape. Strip the
+        # ``mcp`` token so the MCP entry point sees ``[--invoke, ...]``.
+        mcp_argv = list(argv[1:]) if argv is not None else sys.argv[1:]
+        if mcp_argv and mcp_argv[0] == "mcp":
+            mcp_argv = mcp_argv[1:]
+        return mcp_main(mcp_argv)
+
+    if args.command == "agentic-manifest":
+        from cancerbero.mcp_server import print_manifest
+
+        return print_manifest()
+
     if args.command != "check":
         parser.error(f"unsupported command: {args.command}")
 

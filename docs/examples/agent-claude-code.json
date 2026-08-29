@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "cancerbero": {
+      "command": "cancerbero",
+      "args": ["mcp"],
+      "env": {
+        "PYTHONUNBUFFERED": "1"
+      }
+    }
+  }
+}
