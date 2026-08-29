@@ -83,9 +83,10 @@ class ConfigInspection:
         findings: list[Finding] = []
         for index, item in enumerate(self.evidence):
             mismatch = item.kind.endswith("_mismatch")
+            not_used = item.runtime_relevance == "not_used"
             if mismatch:
                 status = Status.SUSPICIOUS
-            elif item.runtime_relevance == "not_used":
+            elif not_used:
                 status = Status.NOT_APPLICABLE
             elif item.kind.endswith("_match"):
                 status = Status.VERIFIED
@@ -96,13 +97,23 @@ class ConfigInspection:
                 status = Status.SUSPICIOUS
             else:
                 status = Status.UNCHECKED
+            # When the runtime does not consume the evidence, downgrade the
+            # severity so the Finding invariant (status != SUSPICIOUS
+            # implies severity in {INFO, LOW}) holds. We still surface the
+            # raw severity in evidence["raw_severity"] for tooling that
+            # wants the original value.
+            raw_severity = item.severity
+            if not_used and status is not Status.SUSPICIOUS:
+                severity_value = "info"
+            else:
+                severity_value = raw_severity
             severity = {
                 "critical": Severity.CRITICAL,
                 "high": Severity.HIGH,
                 "medium": Severity.MEDIUM,
                 "low": Severity.LOW,
                 "info": Severity.INFO,
-            }.get(item.severity, Severity.INFO)
+            }.get(severity_value, Severity.INFO)
             findings.append(
                 Finding(
                     id=f"cbr.config.{item.kind}.{index}",
@@ -166,11 +177,19 @@ _ADAPTER_SUFFIXES = frozenset({".json", ".safetensors", ".bin", ".gguf"})
 # These detect malicious instructions in configuration/rules files
 # that AI code editors and tools consume
 _RULES_FILE_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = (
-    # Hidden instructions in markdown/html comments
+    # Hidden instructions in markdown/html comments.
+    # The DOTALL allowance was too permissive: a ``merges.txt`` BPE file
+    # that happens to contain a token like ``a <!--``, the literal word
+    # ``override`` (which is in every English BPE vocabulary), and a
+    # token containing ``-->`` would match across multiple lines and
+    # fire a false positive. We now require the entire match to live
+    # on a single line (no ``re.DOTALL``) and to fit within 400 chars
+    # of trigger + payload, so coincidental cross-line matches in BPE
+    # vocabularies do not fire.
     (
         re.compile(
-            r"<!--.*(?:ignore|forget|disregard|override|bypass|system prompt|you are now|act as|pretend).*-->",
-            re.IGNORECASE | re.DOTALL,
+            r"<!--[^\n]{0,400}?(?:ignore|forget|disregard|override|bypass|system prompt|you are now|act as|pretend)[^\n]{0,400}?-->",
+            re.IGNORECASE,
         ),
         "hidden_comment_instruction",
         "File contains hidden instructions in HTML comments that attempt to override AI behavior.",

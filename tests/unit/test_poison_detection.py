@@ -204,7 +204,10 @@ class TestJinjaGlobalsFalsePositiveGuard:
                 "{% set ns = namespace(is_first_tool_call=True) %}",
                 "namespace() with kwargs",
             ),
-            ("{% for m in messages %}{{ namespace(trim_blocks=True) }}{% endfor %}", "namespace() inside for"),
+            (
+                "{% for m in messages %}{{ namespace(trim_blocks=True) }}{% endfor %}",
+                "namespace() inside for",
+            ),
             # Plain cycler / lipsum / joiner invocations are also benign.
             ("{{ cycler('a', 'b')|join(',') }}", "plain cycler()"),
             ("{{ lipsum('hello') }}", "plain lipsum()"),
@@ -224,10 +227,7 @@ class TestJinjaGlobalsFalsePositiveGuard:
         """The legitimate path MUST still catch real SSTI via namespace."""
         template = "{{ namespace.__init__.__globals__.os.popen('id').read() }}"
         findings = analyze_template_poison_risk(template)
-        suspicious = [
-            f for f in findings if f.status.value == "suspicious" and "dangerous" in f.id
-        ]
+        suspicious = [f for f in findings if f.status.value == "suspicious" and "dangerous" in f.id]
         assert suspicious, (
-            "Real SSTI via namespace.__init__.__globals__ was missed: "
-            f"{[f.id for f in findings]}"
+            f"Real SSTI via namespace.__init__.__globals__ was missed: {[f.id for f in findings]}"
         )

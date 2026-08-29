@@ -2,6 +2,25 @@
 
 All notable changes to Cancerbero are documented here.
 
+## 0.1.3 — 2026-08-29
+
+### Fixed
+
+- **False positive on BPE `merges.txt` files.** The Rules File Backdoor
+  detector's `<!--...override...-->` regex used `re.DOTALL`, so it
+  matched across multiple lines. A real BPE vocabulary that happens
+  to contain a token starting with `<!--`, the literal word
+  `override` (which is in every English BPE vocabulary), and a token
+  containing `-->` would fire as a "hidden instructions" finding. The
+  pattern is now single-line only (no `re.DOTALL`) and bounded to 400
+  chars before/after the trigger word. 3 regression tests added.
+- **Findings invariant relaxed for `not_used` evidence.** When a
+  companion-file signal is `runtime_relevance="not_used"` (e.g.
+  Ollama-only `Modelfile` checked under `llama.cpp`), the
+  ConfigInspection normalizer now downgrades the severity to INFO so
+  the `status != SUSPICIOUS ⇒ severity ∈ {INFO, LOW}` invariant holds.
+  Raw severity is preserved in `evidence["raw_severity"]`.
+
 ## 0.1.2 — 2026-08-29
 
 ### Fixed
